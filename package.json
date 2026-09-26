@@ -1,6 +1,6 @@
 {
   "name": "whale-girl-dashboard",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "Cross-platform whale desktop companion with Codex activity and usage plus DeepSeek chat and balance.",
   "main": "electron/main.cjs",
   "type": "module",

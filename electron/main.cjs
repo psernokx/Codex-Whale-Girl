@@ -26,6 +26,8 @@ let chatInFlight = false
 let lastChatAt = 0
 let panelOpen = false
 let bubbleExpanded = false
+let petScale = 1
+const normalizeScale = (value) => Number.isFinite(value) ? Math.max(0.5, Math.min(1.5, value)) : 1
 let codexUsageCache = null
 let codexUsageFetchedAt = 0
 let codexUsageInFlight = null
@@ -40,6 +42,7 @@ let codexMonitorFailures = 0
 const defaultConfig = {
   alwaysOnTop: true,
   clickThrough: false,
+  petScale: 1,
   apiKeyEncrypted: '',
   pricing: {
     flash: { hit: 0.02, miss: 1, output: 2 },
@@ -118,6 +121,7 @@ async function readConfig() {
     return {
       ...defaultConfig,
       ...parsed,
+      petScale: normalizeScale(parsed.petScale),
       pricing: {
         flash: { ...defaultConfig.pricing.flash, ...parsed?.pricing?.flash },
         pro: { ...defaultConfig.pricing.pro, ...parsed?.pricing?.pro },
@@ -162,6 +166,7 @@ async function publicConfig() {
   return {
     alwaysOnTop: config.alwaysOnTop,
     clickThrough: config.clickThrough,
+    petScale: config.petScale,
     hasApiKey: Boolean(decryptApiKey(config)),
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     pricing: config.pricing,
@@ -295,10 +300,14 @@ async function readResponseJson(response, maxBytes) {
 
 function applyWindowSize() {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const target = panelOpen ? PANEL_SIZE : bubbleExpanded ? BUBBLE_SIZE : COMPACT_SIZE
+  const base = panelOpen ? PANEL_SIZE : bubbleExpanded ? BUBBLE_SIZE : COMPACT_SIZE
   const bounds = mainWindow.getBounds()
+  const area = screen.getDisplayMatching(bounds).workArea
+  const zoom = Math.min(petScale, area.width / base.width, area.height / base.height)
+  mainWindow.webContents.setZoomFactor(zoom)
+  const target = { width: Math.round(base.width * zoom), height: Math.round(base.height * zoom) }
   if (bounds.width === target.width && bounds.height === target.height) return
-  mainWindow.setBounds({ x: bounds.x + bounds.width - target.width, y: bounds.y + bounds.height - target.height, ...target }, true)
+  mainWindow.setBounds({ x: Math.max(area.x, Math.min(area.x + area.width - target.width, bounds.x + bounds.width - target.width)), y: Math.max(area.y, Math.min(area.y + area.height - target.height, bounds.y + bounds.height - target.height)), ...target })
 }
 
 function trayIcon() {
@@ -323,6 +332,7 @@ function createTray() {
 
 async function createWindow() {
   const config = await readConfig()
+  petScale = config.petScale
   mainWindow = new BrowserWindow({
     ...COMPACT_SIZE,
     icon: path.join(projectRoot, 'build', 'icons', 'icon.png'),
@@ -348,6 +358,7 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'))
   mainWindow.once('ready-to-show', () => {
+    applyWindowSize()
     if (animationSmokeMode) {
       mainWindow.setIgnoreMouseEvents(true)
       mainWindow.showInactive()
@@ -433,6 +444,20 @@ async function createWindow() {
           return { opened, staysInside, closesOutside, closesOnBlur: panel.classList.contains('hidden') }
         })()`)
         if (!Object.values(dismissal).every(Boolean)) throw new Error('Usage dismissal failed: ' + JSON.stringify(dismissal))
+        for (const scale of [0.5, 1.5, 1]) {
+          await mainWindow.webContents.executeJavaScript(`window.whaleAPI.saveConfig({petScale:${scale}})`)
+          panelOpen = false
+          bubbleExpanded = false
+          applyWindowSize()
+          await new Promise(resolve => setTimeout(resolve, 150))
+          const bounds = mainWindow.getBounds()
+          if (bounds.width !== Math.round(COMPACT_SIZE.width * scale)) throw new Error('Scaled window width mismatch')
+          if (Math.abs(mainWindow.webContents.getZoomFactor() - scale) > 0.01) throw new Error('Scale not applied')
+          if ((await readConfig()).petScale !== scale) throw new Error('Scale not persisted')
+          const layout = await mainWindow.webContents.executeJavaScript(`({width:innerWidth, pet:document.getElementById('petStage').getBoundingClientRect().width})`)
+          if (Math.abs(layout.width - COMPACT_SIZE.width) > 2 || Math.abs(layout.pet - 292) > 1) throw new Error('Scaled layout changed proportions')
+        }
+
 
         quitting = true
         app.quit()
@@ -661,7 +686,10 @@ function registerIpc() {
     }
     if (typeof patch.alwaysOnTop === 'boolean') current.alwaysOnTop = patch.alwaysOnTop
     if (typeof patch.clickThrough === 'boolean') current.clickThrough = patch.clickThrough
+    if (typeof patch.petScale === 'number') current.petScale = normalizeScale(patch.petScale)
     await writeConfig(current)
+    petScale = current.petScale
+    applyWindowSize()
     return publicConfig()
   })
   handle('whale:set-always-on-top', async (_event, value) => {

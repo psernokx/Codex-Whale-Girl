@@ -147,3 +147,7 @@ button { cursor: pointer; }
   .bubble::before { border-top-color:#819ac5; }
   .bubble::after { border-top-color:#182a4d; }
 }
+
+.pet-size-control { display:block; margin:8px 0 12px; }
+.pet-size-control output { float:right; }
+.pet-size-control input[type="range"] { display:block; width:100%; padding:0; margin-top:8px; accent-color:#86cde5; }

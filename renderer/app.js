@@ -368,6 +368,8 @@ function render(snapshot) {
 async function load() {
   render(await api.getSnapshot())
   const config = await api.getConfig()
+  $('petScale').value = Math.round((config.petScale || 1) * 100)
+  $('petScaleValue').textContent = `${$('petScale').value}%`
   $('alwaysOnTop').checked = config.alwaysOnTop
   $('dynamicPet').checked = dynamicPetEnabled
   $('securityStatus').textContent = config.encryptionAvailable ? '系统加密已启用' : '系统加密不可用'
@@ -501,6 +503,11 @@ $('chatQuestion').addEventListener('keydown', (event) => {
 $('refreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
 $('refreshCodex').addEventListener('click', () => { void refreshCodexUsage(true) })
 $('settingsRefreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
+$('petScale').addEventListener('input', () => { $('petScaleValue').textContent = `${$('petScale').value}%` })
+$('petScale').addEventListener('change', async () => {
+  try { await api.saveConfig({ petScale: Number($('petScale').value) / 100 }) }
+  catch (error) { setPetState('error', { message: error.message }) }
+})
 $('saveSettings').addEventListener('click', async () => {
   const apiKey = $('apiKey').value
   try {
