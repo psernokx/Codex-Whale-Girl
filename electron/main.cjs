@@ -95,9 +95,11 @@ async function publishCodexActivity() {
   if (codexActivityPolling || !mainWindow || mainWindow.isDestroyed()) return
   codexActivityPolling = true
   try {
-    const activity = await modules.readCodexActivity(await getCodexThreads())
+    // Refresh previews separately so a slow app-server cannot stall live goal monitoring.
+    void getCodexThreads().catch(() => {})
+    const activity = await modules.readCodexActivity(codexThreadsCache || [])
     codexMonitorFailures = 0
-    const key = `${activity.phase}:${activity.threadId}:${activity.activeCount}:${activity.title}`
+    const key = `${activity.phase}:${activity.threadId}:${activity.activeCount}:${activity.title}:${activity.goalCount}:${activity.description || ''}:${activity.detail || ''}`
     if (key !== lastCodexActivityKey) {
       lastCodexActivityKey = key
       mainWindow.webContents.send('whale:codex-activity', activity)

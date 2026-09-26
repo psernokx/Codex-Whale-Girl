@@ -1,5 +1,6 @@
 import readline from 'node:readline'
 import { spawnCodexServer } from './codex-runtime.mjs'
+import { readCodexLocalIndex } from './codex-local-index.mjs'
 
 function shortText(value, length = 120) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, length)
@@ -16,7 +17,7 @@ function latestUserMessage(turns) {
   return ''
 }
 
-export async function readCodexThreads() {
+async function readServerThreads() {
   const child = await spawnCodexServer()
   return new Promise((resolve, reject) => {
     const lines = readline.createInterface({ input: child.stdout })
@@ -74,4 +75,19 @@ export async function readCodexThreads() {
       capabilities: { experimentalApi: true },
     } })
   })
+}
+
+export async function readCodexThreads() {
+  const [local, remote] = await Promise.all([readCodexLocalIndex(), readServerThreads().catch(() => [])])
+  const metadata = new Map(local.threads.map((thread) => [thread.id, thread]))
+  const goals = local.threads.filter((thread) => thread.goalStatus)
+    .sort((a, b) => Number(b.goalStatus === 'active') - Number(a.goalStatus === 'active') || b.goalUpdatedAt - a.goalUpdatedAt)
+  const goalIds = new Set(goals.map((thread) => thread.id))
+  const recent = remote.length ? remote.map((thread) => ({ ...thread, ...metadata.get(thread.id) })) : local.threads.slice(0, 6)
+  const labels = { active: '目标进行中', paused: '目标已暂停', blocked: '目标需要处理', usage_limited: '等待额度恢复', budget_limited: '等待额度恢复' }
+  if (!local.available && !remote.length) throw new Error('暂时无法读取对话，请检查 Codex 登录状态')
+  return [...goals, ...recent.filter((thread) => !goalIds.has(thread.id))].map((thread) => ({
+    ...thread,
+    preview: thread.goalStatus ? [labels[thread.goalStatus], thread.project].filter(Boolean).join(' · ') : thread.preview || thread.title,
+  }))
 }

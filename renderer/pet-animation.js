@@ -8,6 +8,7 @@ const states = {
   'codex-editing': ['WORKING', 'editing'], 'codex-running': ['WORKING', 'commanding'],
   'codex-testing': ['WORKING', 'testing'], 'codex-waiting': ['WAITING'],
   'codex-completed': ['SUCCESS'], 'codex-error': ['ERROR'],
+  'codex-goal': ['THINKING'],
 }
 
 function clipFor(state) {

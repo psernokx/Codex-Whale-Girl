@@ -53,20 +53,21 @@ let deepSeekBusy = false
 const codexPhaseText = {
   thinking: '思考中', searching: '查找资料中', editing: '修改文件中',
   running: '工作中', testing: '测试中', waiting: '等你处理一下',
-  completed: '完成啦', error: '遇到问题了', idle: '休息中',
+  completed: '完成啦', error: '遇到问题了', idle: '休息中', goal: '目标进行中',
 }
 
 function applyCodexActivity(activity) {
+  const previousDescription = codexActivity.description || codexPhaseText[codexActivity.phase]
   codexActivity = activity
-  const description = codexPhaseText[activity.phase] || '进行中'
-  const taskName = activity.title ? ` · ${activity.title.slice(0, 24)}` : ''
+  const description = activity.description || codexPhaseText[activity.phase] || '进行中'
+  const taskName = activity.title ? ` · ${activity.project ? `${activity.project} · ` : ''}${activity.title.slice(0, 24)}` : ''
   $('codexLiveStatus').textContent = activity.phase === 'idle'
     ? codexPhaseText.idle
-    : `${description}${taskName}${activity.activeCount > 1 ? ` · 另有 ${activity.activeCount - 1} 个任务` : ''}`
+    : `${description}${activity.detail ? ` · ${activity.detail}` : ''}${taskName}${activity.activeCount > 1 ? ` · 另有 ${activity.activeCount - 1} 个任务` : ''}${activity.goalCount ? ` · ${activity.goalCount} 个持续目标` : ''}`
   document.querySelectorAll('.thread-card').forEach((button) => button.classList.toggle('is-active', button.dataset.threadId === activity.threadId && activity.phase !== 'idle'))
   if (deepSeekBusy || dragging || Date.now() < petInteractionUntil) return
   const state = activity.phase === 'idle' ? 'idle' : `codex-${activity.phase}`
-  if (currentPetState === state) return
+  if (currentPetState === state && previousDescription === description) return
   if (state === 'idle' && !currentPetState.startsWith('codex-')) return
   setPetState(state, { message: activity.phase === 'idle' ? undefined : description })
 }
@@ -143,7 +144,7 @@ function renderCodexThreads(threads) {
     list.textContent = '还没有找到本机 Codex 对话'
     return
   }
-  for (const thread of threads.slice(0, 3)) {
+  for (const thread of threads.slice(0, Math.max(3, threads.filter((item) => item.goalStatus).length))) {
     const button = document.createElement('button')
     button.className = 'thread-card'
     button.dataset.threadId = thread.id
