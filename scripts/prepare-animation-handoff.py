@@ -207,7 +207,7 @@ print(f"Verified {len(checks)} input files. GPU processing has not been performe
     checksums = {p.relative_to(out).as_posix(): digest(p.read_bytes()) for p in sorted(out.rglob('*')) if p.is_file()}
     write_json(out / 'checksums.json', checksums)
     subprocess.run(['python3', str(out / 'verify-inputs.py')], check=True)
-    archive_path = out.with_suffix('.zip')
+    archive_path = out.with_name(out.name + '.zip')
     with ZipFile(archive_path, 'w', ZIP_DEFLATED, compresslevel=1) as z:
         for p in sorted(out.rglob('*')):
             if p.is_file():
