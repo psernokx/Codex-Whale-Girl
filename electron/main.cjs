@@ -63,6 +63,11 @@ async function loadModules() {
 }
 
 async function getCodexUsage(force = false) {
+  if (animationSmokeMode) return {
+    primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: null },
+    secondary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: null },
+    lifetimeTokens: null, currentStreakDays: null, dailyUsage: [], fetchedAt: Date.now(),
+  }
   if (!force && codexUsageCache && Date.now() - codexUsageFetchedAt < 60_000) return codexUsageCache
   if (!codexUsageInFlight) {
     codexUsageInFlight = modules.readCodexUsage().then((value) => {
@@ -357,6 +362,12 @@ async function createWindow() {
     mainWindow.webContents.once('did-finish-load', async () => {
       try {
         await new Promise((resolve) => setTimeout(resolve, 500))
+        const badge = await mainWindow.webContents.executeJavaScript(`(() => {
+          const badge = document.getElementById('usageBadge')
+          const pill = document.getElementById('statusPill').getBoundingClientRect()
+          return { text: badge.textContent, right: badge.getBoundingClientRect().right, pillLeft: pill.left }
+        })()`)
+        if (!badge.text.includes('总剩余 60%') || !badge.text.includes('5h 剩余 75%') || badge.right > badge.pillLeft) throw new Error('Usage badge mismatch: ' + JSON.stringify(badge))
         await mainWindow.webContents.executeJavaScript(`(() => {
           const toggle = document.getElementById('dynamicPet')
           toggle.checked = true
