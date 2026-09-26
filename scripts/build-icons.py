@@ -9,7 +9,8 @@ root = Path(__file__).resolve().parents[1]
 output = root / 'build' / 'icons'
 output.mkdir(parents=True, exist_ok=True)
 source = Image.open(root / 'assets/dsh-pet/idle/idle_061.webp').convert('RGBA')
-source = source.crop(source.getchannel('A').getbbox())
+# Ignore near-transparent frame-edge pixels when fitting the character.
+source = source.crop(source.getchannel('A').point(lambda alpha: 255 if alpha >= 32 else 0).getbbox())
 source.thumbnail((920, 920), Image.Resampling.LANCZOS)
 # Upscale this existing frame only for the required icon canvas sizes.
 ratio = min(920 / source.width, 920 / source.height)
