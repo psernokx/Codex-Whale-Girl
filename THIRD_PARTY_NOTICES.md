@@ -1,37 +1,47 @@
 # Third-party notices / 第三方与素材声明
 
-## Application upstream: DeepSeek-Whale-Girl
+## Original application foundation: DeepSeek-Whale-Girl
 
-This repository is a fork of GarfieldZhung/DeepSeek-Whale-Girl:
+Codex Whale Girl started from GarfieldZhung/DeepSeek-Whale-Girl and continues
+development of Codex integration and desktop companion features here:
 https://github.com/GarfieldZhung/DeepSeek-Whale-Girl
 
 The Electron application, original UI and interactions, DeepSeek integration,
 and original static assets derive from that project. The original program
 license and copyright notice remain in `LICENSE` (Copyright (c) 2026 Whale Girl
 Dashboard contributors). Original static artwork has the separate limitations
-stated below; it is not relicensed by this fork.
+stated below; it is not relicensed by this project.
 
-## Animation and state-design upstream: dsh-dafeiyu
+## Primary animation source: PC2005-cloud/dsh-pet
+
+https://github.com/PC2005-cloud/dsh-pet
+
+The dynamic animation artwork used in `assets/dsh-pet/` and
+`assets/extra-actions/` originates from PC2005-cloud/dsh-pet
+(Copyright (c) 2026 PC2005-cloud, MIT). The upstream license is included
+verbatim at `assets/dsh-pet-LICENSE.txt`. The six additional daily actions
+were imported directly; their pinned source and hashes are recorded below.
+
+Codex integration, activity mapping, the Electron animation player, quota
+display, process discovery and subsequent desktop interaction improvements
+are developed in this project. Super-resolution processing does not transfer
+authorship of the underlying artwork.
+
+## Historical frame conversion and initial configuration reference
 
 https://github.com/QCYTSN/dsh-dafeiyu
 
-The frame manifest and animation/state design were adapted from QCYTSN's
-project. Its MIT license (Copyright (c) 2026 QCYTSN) is preserved in
-`assets/dsh-dafeiyu-LICENSE.txt`. This fork uses an Electron player and adds a
-Codex adapter; it does not require the DeepSeek Harness runtime.
+The initial WebP frames in `assets/dsh-pet/` were imported through
+QCYTSN/dsh-dafeiyu, which converted the PC2005-cloud/dsh-pet animation set.
+The initial frame manifest and animation/state design were also adapted from
+that intermediary project. Its MIT license (Copyright (c) 2026 QCYTSN)
+remains in `assets/dsh-dafeiyu-LICENSE.txt` to preserve that provenance.
+This historical import does not identify QCYTSN as the original animation
+artwork author. The archived `legacy/dafeiyu/` frames in that repository
+have a separate restricted notice and are not included here.
 
-## Dynamic whale-maid animation
-
-`assets/dsh-pet/` contains transparent WebP animation frames from
-`QCYTSN/dsh-dafeiyu` (MIT), converted there from the `PC2005-cloud/dsh-pet`
-animation set (Copyright (c) 2026 PC2005-cloud, MIT). The upstream MIT license
-is included verbatim at `assets/dsh-pet-LICENSE.txt`. The animation player in
-this application is an independent Electron implementation. The archived
-`legacy/dafeiyu/` frames in that repository have a separate restricted notice
-and are not included here.
-
-- https://github.com/QCYTSN/dsh-dafeiyu
-- https://github.com/PC2005-cloud/dsh-pet
+This application uses an independent Electron player and does not require
+the DeepSeek Harness runtime.
 
 ## Animation super-resolution processing
 
