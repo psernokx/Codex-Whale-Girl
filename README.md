@@ -95,6 +95,17 @@ npm start
 
 在设置页点击“数据目录”可以直接查看。它们已经写入 `.gitignore`，请不要手动上传。
 
+## 进程读取与隐私
+
+**桌宠会读取本机进程信息**，用于自动找到 Codex 的安装位置，以及判断它退出后是否应该停止工作动画。
+
+- 读取范围：进程名称、程序路径、PID 和父 PID；不读取进程内存、命令行参数或窗口内容。
+- 进程列表仅在内存中处理，不保存、不上传。程序路径可能包含用户名，因此仍属于需要说明的本机隐私信息。
+- Windows 的普通本地进程查询通常不会弹出 UAC 授权框。本程序不主动请求管理员权限；受权限或系统策略限制时，路径可能不可用，程序会回退到常见位置和 PATH。
+- 不保证所有安全软件都不提示或拦截。没有授权弹窗，也不意味着完全没有隐私影响。
+
+更多边界见 [SECURITY.md：Codex 进程发现与隐私](SECURITY.md#codex-进程发现与隐私)。Windows 权限行为参考微软的 [WMI 与 UAC](https://learn.microsoft.com/en-us/windows/win32/wmisdk/user-account-control-and-wmi) 和 [Win32_Process](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process) 文档。
+
 ## 安全防线
 
 可爱归可爱，边界还是要认真守住：
