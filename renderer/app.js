@@ -95,6 +95,15 @@ function renderCodex(value) {
   $('usageBadgeMain').textContent = total ? `总剩余 ${remaining(total)}` : fiveHour ? `5h 剩余 ${remaining(fiveHour)}` : '暂无额度数据'
   $('usageBadgeFiveHour').hidden = !(total && fiveHour)
   $('usageBadgeFiveHour').textContent = fiveHour ? `5h 剩余 ${remaining(fiveHour)}` : ''
+  for (const id of ['usageBadgeMain', 'usageBadgeFiveHour']) {
+    const line = $(id)
+    const match = line.textContent.match(/^(.*?)(\d+%)$/)
+    if (match) {
+      const number = document.createElement('strong')
+      number.textContent = match[2]
+      line.replaceChildren(document.createTextNode(match[1]), number)
+    }
+  }
   $('usageBadge').classList.remove('is-stale')
   $('usageBadge').title = `点击查看详情 · ${new Date(value.fetchedAt).toLocaleTimeString()} 更新`
   const primary = value.primary || value.secondary

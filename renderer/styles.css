@@ -133,11 +133,12 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; } }
 
 /* Keep account limits in the unused lower-left corner beside the pet. */
-.usage-badge { position:absolute; z-index:5; right:244px; bottom:12px; width:108px; padding:7px 9px; border:1px solid rgba(132,171,225,.65); border-radius:13px; color:#e1eeff; background:rgba(24,42,77,.78); box-shadow:0 2px 8px rgba(10,25,50,.12); backdrop-filter:blur(12px); font-size:10px; line-height:1.7; text-align:left; font-variant-numeric:tabular-nums; }
+.usage-badge { position:absolute; z-index:5; right:220px; bottom:12px; width:132px; padding:9px 10px; border:1px solid rgba(132,171,225,.65); border-radius:13px; color:#e1eeff; background:rgba(24,42,77,.92); box-shadow:0 2px 8px rgba(10,25,50,.12); backdrop-filter:blur(12px); font-size:14px; font-weight:600; line-height:1.6; text-align:left; font-variant-numeric:tabular-nums; }
 .usage-badge span { display:block; white-space:nowrap; }
+.usage-badge strong { font-size:20px; font-weight:800; letter-spacing:-.5px; }
 .usage-badge span[hidden] { display:none; }
 .usage-badge:hover { border-color:#e2c48a; }
-.usage-badge.is-stale { opacity:.7; }
+.usage-badge.is-stale { opacity:.9; }
 .bubble.is-working { bottom:248px; }
 @media (prefers-color-scheme: light) {
   .usage-badge { color:#253b63; background:rgba(232,241,255,.82); border-color:rgba(85,117,166,.6); }
