@@ -2,8 +2,8 @@
   "formatVersion": 1,
   "characterId": "whaletail-maid",
   "baseSize": 412,
-  "maxFrameWidth": 412,
-  "maxFrameHeight": 344,
+  "maxFrameWidth": 824,
+  "maxFrameHeight": 688,
   "clips": {
     "idle": {
       "frames": [
@@ -2721,5 +2721,15 @@
   },
   "idleMicroClips": [
     "eat_token"
-  ]
+  ],
+  "imageProcessing": {
+    "method": "Real-ESRGAN AnimeVideo-v3",
+    "scale": 2,
+    "sourceFrameWidth": 412,
+    "sourceFrameHeight": 344,
+    "alpha": "Original alpha resized with Lanczos",
+    "contrast": "unchanged",
+    "modelRelease": "v0.2.5.0",
+    "modelSha256": "548a36f9c3f4ab8da56cd3b13badf23968bee207b396dad14d04b830e5f2ab2d"
+  }
 }

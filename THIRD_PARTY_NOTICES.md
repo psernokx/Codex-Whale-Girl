@@ -33,6 +33,22 @@ and are not included here.
 - https://github.com/QCYTSN/dsh-dafeiyu
 - https://github.com/PC2005-cloud/dsh-pet
 
+## Animation super-resolution processing
+
+The 2,600 frames in `assets/dsh-pet/` were processed at 2x resolution using
+Real-ESRGAN's `realesr-animevideov3` model (v0.2.5.0 release):
+https://github.com/xinntao/Real-ESRGAN
+https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan
+
+RGB uses the model output. Alpha is resized from each original frame using
+Lanczos filtering, then the result is encoded as WebP quality 95 (method 1). No additional
+contrast adjustment is applied. Frame count, order, and timing are unchanged.
+Super-resolution does not change the upstream artwork's license or attribution.
+The model and inference executable are local processing tools and are not
+included in the application package. `scripts/finish-upscaled-frames.py` records
+the alpha-restoration and encoding step. Original frames remain recoverable
+from Git history before the super-resolution commit.
+
 ## Application icons
 
 `build/icons/icon.png`, `icon.ico`, and `icon.icns` are resized exports of
