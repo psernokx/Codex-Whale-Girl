@@ -9,6 +9,7 @@ test('discovers CLI locations across macOS, Linux and Windows', () => {
   const mac = codexCandidates({ platform: 'darwin', env: { PATH: '/custom/bin' }, home: '/example' })
   assert.ok(mac.includes('/Applications/Codex.app/Contents/Resources/codex'))
   assert.ok(mac.includes('/custom/bin/codex'))
+  assert.ok(mac.includes('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'))
   const linux = codexCandidates({ platform: 'linux', env: {}, home: '/example' })
   assert.ok(linux.includes('/example/.local/bin/codex'))
   assert.ok(!linux.some((entry) => entry.startsWith('/Applications/')))

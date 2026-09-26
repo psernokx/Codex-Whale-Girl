@@ -2,6 +2,8 @@ import { open, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { readCodexLocalIndex, defaultCodexHome } from './codex-local-index.mjs'
 
+import { isCodexRunning } from './codex-process.mjs'
+
 const fileStates = new Map()
 
 function commandPhase(value) {
@@ -78,7 +80,8 @@ async function readRollout(filePath, home) {
   return cached.state
 }
 
-export async function readCodexActivity(fallbackThreads = [], now = Date.now(), { home = defaultCodexHome() } = {}) {
+export async function readCodexActivity(fallbackThreads = [], now = Date.now(), { home = defaultCodexHome(), isRunning = isCodexRunning } = {}) {
+  if (!await isRunning()) return { phase: 'idle', threadId: null, title: null, activeCount: 0, goalCount: 0 }
   const local = await readCodexLocalIndex(home)
   const index = new Map(fallbackThreads.map((thread) => [thread.id, local.available ? { ...thread, goalStatus: null, goalUpdatedAt: 0 } : thread]))
   // Local database paths supersede stale paths returned by the app server.

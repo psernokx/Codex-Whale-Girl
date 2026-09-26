@@ -12,6 +12,15 @@ export function codexCandidates({ platform = process.platform, env = process.env
     '/Applications/ChatGPT.app/Contents/Resources/codex',
     paths.join(home, 'Applications/Codex.app/Contents/Resources/codex'),
   )
+  if (platform === 'darwin') {
+    for (const app of ['/Applications/Codex.app', '/Applications/ChatGPT.app', paths.join(home, 'Applications/Codex.app'), paths.join(home, 'Applications/ChatGPT.app')]) {
+      candidates.push(paths.join(app, 'Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'), paths.join(app, 'Contents/Resources/codex-cli/bin/codex'))
+    }
+  }
+  if (platform === 'win32') {
+    for (const base of [env.LOCALAPPDATA, env.ProgramFiles].filter(Boolean)) candidates.push(paths.join(base, 'Codex', 'resources', 'codex.exe'))
+  }
+  if (platform === 'linux') candidates.push('/opt/Codex/resources/codex', '/opt/codex/resources/codex')
   const names = platform === 'win32' ? ['codex.exe', 'codex.cmd'] : ['codex']
   const directories = String(env.PATH || env.Path || '').split(platform === 'win32' ? ';' : ':').filter(Boolean)
   if (platform === 'win32') {
@@ -48,7 +57,9 @@ export async function resolveCodex(options = {}) {
 
 export async function spawnCodexServer() {
   const runtime = await resolveCodex()
-  return spawn(runtime.command, runtime.args, {
+  // Read-only helpers must never execute the user's turn notification hook.
+  const args = [...runtime.args.slice(0, -1), '-c', 'notify=[]', '-c', 'tui.notifications=false', 'app-server']
+  return spawn(runtime.command, args, {
     env: runtime.env, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true,
   })
 }
