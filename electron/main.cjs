@@ -325,6 +325,7 @@ async function createWindow() {
   const config = await readConfig()
   mainWindow = new BrowserWindow({
     ...COMPACT_SIZE,
+    icon: path.join(projectRoot, 'build', 'icons', 'icon.png'),
     transparent: true,
     frame: false,
     resizable: false,
@@ -418,6 +419,21 @@ async function createWindow() {
           if (Math.abs(anchor.tip - anchor.head) > 3) throw new Error('Bubble anchor mismatch: ' + JSON.stringify(anchor))
         }
         await fs.writeFile(path.join(artifactDir, 'bubble-drag-anchor.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        const dismissal = await mainWindow.webContents.executeJavaScript(`(() => {
+          const badge = document.getElementById('usageBadge')
+          const panel = document.getElementById('dashboard')
+          badge.click()
+          const opened = !panel.classList.contains('hidden')
+          panel.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+          const staysInside = !panel.classList.contains('hidden')
+          document.getElementById('app').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+          const closesOutside = panel.classList.contains('hidden') && !badge.hidden
+          badge.click()
+          window.dispatchEvent(new Event('blur'))
+          return { opened, staysInside, closesOutside, closesOnBlur: panel.classList.contains('hidden') }
+        })()`)
+        if (!Object.values(dismissal).every(Boolean)) throw new Error('Usage dismissal failed: ' + JSON.stringify(dismissal))
+
         quitting = true
         app.quit()
       } catch (error) {

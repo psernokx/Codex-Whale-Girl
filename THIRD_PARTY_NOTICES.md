@@ -33,6 +33,11 @@ and are not included here.
 - https://github.com/QCYTSN/dsh-dafeiyu
 - https://github.com/PC2005-cloud/dsh-pet
 
+## Application icons
+
+`build/icons/icon.png`, `icon.ico`, and `icon.icns` are resized exports of
+`assets/dsh-pet/idle/idle_061.webp` from the MIT-licensed animation above.
+
 ## User-supplied whale-maid image
 
 The base character file at `assets/whale/whale-maid.png` was supplied by the

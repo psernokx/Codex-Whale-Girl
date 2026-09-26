@@ -521,6 +521,12 @@ $('usageBadge').addEventListener('click', () => {
   setUsageTab('codex')
   setPanel('dashboard')
 })
+document.addEventListener('pointerdown', (event) => {
+  if (!dashboard.classList.contains('hidden') && !event.target.closest('#dashboard')) setPanel()
+})
+window.addEventListener('blur', () => {
+  if (!dashboard.classList.contains('hidden')) setPanel()
+})
 setInterval(() => {
   void refreshCodexUsage(true)
   if (!dashboard.classList.contains('hidden') && !$('codexThreadsView').hidden) void refreshCodexThreads(true)

@@ -41,7 +41,7 @@ button { cursor: pointer; }
 .pet-stage.state-busy .status-pill { border-color:#fb7185; background:rgba(136,19,55,.9); }
 .pet-stage.state-success .status-pill { border-color:#86efac; background:rgba(20,83,45,.9); }
 
-.bubble { position:absolute; z-index:4; right:24px; bottom:274px; max-width:292px; padding:9px 13px; border:2px solid #25335f; border-radius:19px 17px 18px 14px; color:#25335f; background-color:rgba(255,255,255,.98); background-image:radial-gradient(rgba(96,165,250,.15) 1px,transparent 1px); background-size:8px 8px; box-shadow:3px 3px 0 rgba(37,51,95,.2); font-size:12px; font-weight:700; line-height:1.45; transform:rotate(-1deg); transform-origin:bottom right; }
+.bubble { position:absolute; z-index:4; right:24px; bottom:274px; width:max-content; max-width:min(292px, calc(100vw - 36px)); padding:9px 13px; border:2px solid #25335f; border-radius:19px 17px 18px 14px; color:#25335f; background-color:rgba(255,255,255,.98); background-image:radial-gradient(rgba(96,165,250,.15) 1px,transparent 1px); background-size:8px 8px; box-shadow:3px 3px 0 rgba(37,51,95,.2); font-size:12px; font-weight:700; line-height:1.45; transform:rotate(-1deg); transform-origin:bottom right; }
 .bubble.is-short { padding:6px 11px; border-radius:16px 15px 16px 12px; }
 .bubble.is-long { padding:10px 14px; }
 .bubble > span { display:block; max-height:204px; overflow-y:auto; scrollbar-width:thin; white-space:pre-wrap; overflow-wrap:anywhere; }
