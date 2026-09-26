@@ -1,3 +1,4 @@
+import { createFramePlayer, posterIndex } from './frame-player.js'
 // Dafeiyu frames and timing, with activity assignments chosen for this desktop pet.
 const manifest = await fetch(new URL('../assets/dsh-pet-manifest.json', import.meta.url)).then((response) => response.json())
 const clips = manifest.clips
@@ -21,44 +22,63 @@ function framePath(name, index) {
 
 export function petStatePoster(state) {
   const name = clipFor(state)
-  return name ? framePath(name, Math.min(name === 'working' ? 120 : 60, clips[name].frames.length - 1)) : null
+  return name ? framePath(name, posterIndex(clips[name], name === 'working' ? 5040 : 2520)) : null
 }
 
 export function createPetAnimator() {
-  let frameTimer = null
   let microTimer = null
   let activeName = null
   let target = null
-  let frame = 0
+  const cache = new Map()
+  // Bound our retained predecode references by pixel size, including future 4x frames.
+  const bytesPerFrame = (manifest.maxFrameWidth || 824) * (manifest.maxFrameHeight || 688) * 4
+  const cacheLimit = Math.max(1, Math.min(12, Math.floor(24 * 1024 * 1024 / bytesPerFrame)))
+
+  function clearCache() {
+    for (const image of cache.values()) image.src = ''
+    cache.clear()
+  }
+  function present(index) {
+    if (!target || !activeName) return
+    const clip = clips[activeName]
+    target.src = framePath(activeName, index)
+    const wanted = new Set()
+    for (let offset = 0; offset < Math.min(cacheLimit, clip.frames.length); offset++) {
+      const next = clip.loop ? (index + offset) % clip.frames.length : index + offset
+      if (next >= clip.frames.length) break
+      wanted.add(framePath(activeName, next))
+    }
+    for (const [path, image] of cache) {
+      if (!wanted.has(path)) { image.src = ''; cache.delete(path) }
+    }
+    for (const path of wanted) {
+      if (cache.has(path)) continue
+      const image = new Image()
+      image.decoding = 'async'
+      image.src = path
+      cache.set(path, image)
+      // Completion never writes to the visible image, so an old decode cannot
+      // overwrite a newer action. The browser also manages its own image cache.
+      image.decode().catch(() => {})
+    }
+  }
+  const player = createFramePlayer({ onFrame: present })
 
   function stop() {
-    clearInterval(frameTimer)
+    player.stop()
     clearTimeout(microTimer)
-    frameTimer = null
     microTimer = null
     activeName = null
+    target = null
+    clearCache()
   }
 
   function play(name, onEnd) {
-    clearInterval(frameTimer)
-    const clip = clips[name]
+    clearTimeout(microTimer)
+    microTimer = null
+    clearCache()
     activeName = name
-    frame = 0
-    target.src = framePath(name, frame)
-    frameTimer = setInterval(() => {
-      frame++
-      if (frame >= clip.frames.length) {
-        if (!clip.loop) {
-          frame = clip.frames.length - 1
-          clearInterval(frameTimer)
-          frameTimer = null
-          onEnd?.()
-          return
-        }
-        frame = 0
-      }
-      target.src = framePath(name, frame)
-    }, clip.frameMs)
+    player.play(clips[name], onEnd)
   }
 
   function start(image, state, idleMode, enabled) {
@@ -67,13 +87,15 @@ export function createPetAnimator() {
       stop()
       return false
     }
-    target = image
-    // Running and testing share a clip; keep its position when their labels change.
-    if (activeName === name && frameTimer) {
-      target.src = framePath(name, frame)
+    // Shared working states retain their elapsed time, including after a
+    // non-looping clip has reached its final pose.
+    if (activeName === name) {
+      target = image
+      present(player.frame)
       return true
     }
     stop()
+    target = image
     play(name)
     if (state === 'idle') {
       microTimer = setTimeout(() => play('eat_token', () => play('idle')), 16000 + Math.random() * 10000)

@@ -421,7 +421,8 @@ async function createWindow() {
           mainWindow.webContents.send('whale:pet-state', { state: `codex-${phase}` })
           await new Promise((resolve) => setTimeout(resolve, 200))
           const src = await mainWindow.webContents.executeJavaScript("document.querySelector('.pet-image.is-visible').getAttribute('src')")
-          if (!src.endsWith(clip + '/' + clip + (clip === 'working' ? '_121.webp' : '_061.webp'))) throw new Error('Static status mismatch: ' + src)
+          const expected = await mainWindow.webContents.executeJavaScript(`import('./pet-animation.js').then(m => m.petStatePoster('codex-${phase}'))`)
+          if (src !== expected) throw new Error('Static status mismatch: ' + src)
         }
         await mainWindow.webContents.executeJavaScript(`(() => { const toggle = document.getElementById('dynamicPet'); toggle.checked = true; toggle.dispatchEvent(new Event('change')) })()`)
         for (const message of ['放我下来！', '抓稳一点……不对，快把我放稳！']) {

@@ -299,6 +299,8 @@ function transitionPet(state, assetOverride = null, extraClass = '') {
   petVideo.onloadeddata = null
   petVideo.classList.remove('is-visible')
   if (extra) {
+    petVideo.playbackRate = 1
+    petVideo.defaultPlaybackRate = 1
     petVideo.src = `../assets/extra-actions/${selectedIdle}.webm`
     petVideo.onloadeddata = () => {
       if (videoToken !== videoVersion) return
