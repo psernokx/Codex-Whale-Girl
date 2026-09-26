@@ -133,7 +133,7 @@ button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; } }
 
 /* Keep account limits in the unused lower-left corner beside the pet. */
-.usage-badge { position:absolute; z-index:5; right:220px; bottom:12px; width:132px; padding:9px 10px; border:1px solid rgba(132,171,225,.65); border-radius:13px; color:#e1eeff; background:rgba(24,42,77,.92); box-shadow:0 2px 8px rgba(10,25,50,.12); backdrop-filter:blur(12px); font-size:14px; font-weight:600; line-height:1.6; text-align:left; font-variant-numeric:tabular-nums; }
+.usage-badge { position:absolute; z-index:5; left:18px; bottom:12px; transform-origin:bottom left; width:132px; padding:9px 10px; border:1px solid rgba(132,171,225,.65); border-radius:13px; color:#e1eeff; background:rgba(24,42,77,.92); box-shadow:0 2px 8px rgba(10,25,50,.12); backdrop-filter:blur(12px); font-size:14px; font-weight:600; line-height:1.6; text-align:left; font-variant-numeric:tabular-nums; }
 .usage-badge span { display:block; white-space:nowrap; }
 .usage-badge strong { font-size:20px; font-weight:800; letter-spacing:-.5px; }
 .usage-badge span[hidden] { display:none; }

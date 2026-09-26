@@ -18,6 +18,11 @@ contextBridge.exposeInMainWorld('whaleAPI', {
   setBubbleExpanded: (value) => ipcRenderer.invoke('whale:set-bubble-expanded', value),
   minimize: () => ipcRenderer.invoke('whale:minimize'),
   quit: () => ipcRenderer.invoke('whale:quit'),
+  onDisplayScale: (callback) => {
+    const listener = (_event, value) => callback(value)
+    ipcRenderer.on('whale:display-scale', listener)
+    return () => ipcRenderer.removeListener('whale:display-scale', listener)
+  },
   onSnapshot: (callback) => {
     const listener = (_event, value) => callback(value)
     ipcRenderer.on('whale:snapshot', listener)

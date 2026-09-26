@@ -27,6 +27,7 @@ let lastChatAt = 0
 let panelOpen = false
 let bubbleExpanded = false
 let petScale = 1
+let usageScale = 1
 const normalizeScale = (value) => Number.isFinite(value) ? Math.max(0.5, Math.min(1.5, value)) : 1
 let codexUsageCache = null
 let codexUsageFetchedAt = 0
@@ -43,6 +44,7 @@ const defaultConfig = {
   alwaysOnTop: true,
   clickThrough: false,
   petScale: 1,
+  usageScale: 1,
   apiKeyEncrypted: '',
   pricing: {
     flash: { hit: 0.02, miss: 1, output: 2 },
@@ -122,6 +124,7 @@ async function readConfig() {
       ...defaultConfig,
       ...parsed,
       petScale: normalizeScale(parsed.petScale),
+      usageScale: normalizeScale(parsed.usageScale),
       pricing: {
         flash: { ...defaultConfig.pricing.flash, ...parsed?.pricing?.flash },
         pro: { ...defaultConfig.pricing.pro, ...parsed?.pricing?.pro },
@@ -167,6 +170,7 @@ async function publicConfig() {
     alwaysOnTop: config.alwaysOnTop,
     clickThrough: config.clickThrough,
     petScale: config.petScale,
+    usageScale: config.usageScale,
     hasApiKey: Boolean(decryptApiKey(config)),
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     pricing: config.pricing,
@@ -305,7 +309,11 @@ function applyWindowSize() {
   const area = screen.getDisplayMatching(bounds).workArea
   const zoom = Math.min(petScale, area.width / base.width, area.height / base.height)
   mainWindow.webContents.setZoomFactor(zoom)
-  const target = { width: Math.round(base.width * zoom), height: Math.round(base.height * zoom) }
+  const target = {
+    width: Math.min(area.width, Math.ceil(Math.max(base.width * zoom, 30 + 132 * usageScale + 205 * zoom))),
+    height: Math.min(area.height, Math.ceil(Math.max(base.height * zoom, 110 * usageScale + 24))),
+  }
+  mainWindow.webContents.send('whale:display-scale', { pet: zoom, usage: usageScale })
   if (bounds.width === target.width && bounds.height === target.height) return
   mainWindow.setBounds({ x: Math.max(area.x, Math.min(area.x + area.width - target.width, bounds.x + bounds.width - target.width)), y: Math.max(area.y, Math.min(area.y + area.height - target.height, bounds.y + bounds.height - target.height)), ...target })
 }
@@ -333,6 +341,7 @@ function createTray() {
 async function createWindow() {
   const config = await readConfig()
   petScale = config.petScale
+  usageScale = config.usageScale
   mainWindow = new BrowserWindow({
     ...COMPACT_SIZE,
     icon: path.join(projectRoot, 'build', 'icons', 'icon.png'),
@@ -451,13 +460,27 @@ async function createWindow() {
           applyWindowSize()
           await new Promise(resolve => setTimeout(resolve, 150))
           const bounds = mainWindow.getBounds()
-          if (bounds.width !== Math.round(COMPACT_SIZE.width * scale)) throw new Error('Scaled window width mismatch')
+          if (bounds.width !== Math.ceil(Math.max(COMPACT_SIZE.width * scale, 30 + 132 * usageScale + 205 * scale))) throw new Error('Scaled window width mismatch')
           if (Math.abs(mainWindow.webContents.getZoomFactor() - scale) > 0.01) throw new Error('Scale not applied')
           if ((await readConfig()).petScale !== scale) throw new Error('Scale not persisted')
           const layout = await mainWindow.webContents.executeJavaScript(`({width:innerWidth, pet:document.getElementById('petStage').getBoundingClientRect().width})`)
-          if (Math.abs(layout.width - COMPACT_SIZE.width) > 2 || Math.abs(layout.pet - 292) > 1) throw new Error('Scaled layout changed proportions')
+          if (Math.abs(layout.width - bounds.width / scale) > 2 || Math.abs(layout.pet - 292) > 1) throw new Error('Scaled layout changed proportions')
         }
 
+
+        for (const [pet, usage] of [[0.5, 1.5], [1.5, 0.5], [1, 1]]) {
+          await mainWindow.webContents.executeJavaScript(`window.whaleAPI.saveConfig({petScale:${pet},usageScale:${usage}})`)
+          await new Promise(resolve => setTimeout(resolve, 180))
+          const metrics = await mainWindow.webContents.executeJavaScript(`(() => {
+            const badge = document.getElementById('usageBadge').getBoundingClientRect()
+            const pet = document.getElementById('petStage').getBoundingClientRect()
+            const pill = document.getElementById('statusPill').getBoundingClientRect()
+            return {badge:badge.width, pet:pet.width, left:badge.left, right:badge.right, pillLeft:pill.left}
+          })()`)
+          if (Math.abs(metrics.badge * pet - 132 * usage) > 2 || Math.abs(metrics.pet * pet - 292 * pet) > 2) throw new Error('Independent sizes failed: ' + JSON.stringify(metrics))
+          if (metrics.left < 0 || metrics.right > metrics.pillLeft) throw new Error('Independent sizes overlap')
+          if ((await readConfig()).usageScale !== usage) throw new Error('Usage size not persisted')
+        }
 
         quitting = true
         app.quit()
@@ -687,8 +710,10 @@ function registerIpc() {
     if (typeof patch.alwaysOnTop === 'boolean') current.alwaysOnTop = patch.alwaysOnTop
     if (typeof patch.clickThrough === 'boolean') current.clickThrough = patch.clickThrough
     if (typeof patch.petScale === 'number') current.petScale = normalizeScale(patch.petScale)
+    if (typeof patch.usageScale === 'number') current.usageScale = normalizeScale(patch.usageScale)
     await writeConfig(current)
     petScale = current.petScale
+    usageScale = current.usageScale
     applyWindowSize()
     return publicConfig()
   })

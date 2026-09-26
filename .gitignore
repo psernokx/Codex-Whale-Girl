@@ -30,3 +30,6 @@ Thumbs.db
 .vscode/
 .idea/
 
+
+# Locally downloaded upscaling runtime and models
+tools-local/

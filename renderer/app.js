@@ -377,6 +377,8 @@ function render(snapshot) {
 async function load() {
   render(await api.getSnapshot())
   const config = await api.getConfig()
+  $('usageScale').value = Math.round((config.usageScale || 1) * 100)
+  $('usageScaleValue').textContent = `${$('usageScale').value}%`
   $('petScale').value = Math.round((config.petScale || 1) * 100)
   $('petScaleValue').textContent = `${$('petScale').value}%`
   $('alwaysOnTop').checked = config.alwaysOnTop
@@ -512,6 +514,11 @@ $('chatQuestion').addEventListener('keydown', (event) => {
 $('refreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
 $('refreshCodex').addEventListener('click', () => { void refreshCodexUsage(true) })
 $('settingsRefreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
+$('usageScale').addEventListener('input', () => { $('usageScaleValue').textContent = `${$('usageScale').value}%` })
+$('usageScale').addEventListener('change', async () => {
+  try { await api.saveConfig({ usageScale: Number($('usageScale').value) / 100 }) }
+  catch (error) { setPetState('error', { message: error.message }) }
+})
 $('petScale').addEventListener('input', () => { $('petScaleValue').textContent = `${$('petScale').value}%` })
 $('petScale').addEventListener('change', async () => {
   try { await api.saveConfig({ petScale: Number($('petScale').value) / 100 }) }
@@ -531,6 +538,12 @@ $('openData').addEventListener('click', () => api.openDataDirectory())
 $('minimize').addEventListener('click', () => api.minimize())
 $('quit').addEventListener('click', () => api.quit())
 
+api.onDisplayScale(({pet, usage}) => {
+  const badge = $('usageBadge')
+  badge.style.transform = `scale(${usage / pet})`
+  badge.style.left = `${18 / pet}px`
+  badge.style.bottom = `${12 / pet}px`
+})
 api.onSnapshot(render)
 api.onPetState((detail) => setPetState(detail.state, detail))
 api.onCodexActivity(applyCodexActivity)
