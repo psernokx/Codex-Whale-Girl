@@ -46,3 +46,24 @@ test('npm Windows launcher runs directly without a command shell', async () => {
     assert.equal(runtime.env.ELECTRON_RUN_AS_NODE, '1')
   } finally { await rm(temp, { recursive: true, force: true }) }
 })
+
+test('running processes discover relocated desktop bundles and CLI paths on all platforms', async () => {
+  const { candidatesFromProcesses } = await import('../src/codex-runtime.mjs')
+  assert.ok(candidatesFromProcesses([{ command: '/external disk/ChatGPT.app/Contents/MacOS/ChatGPT' }], 'darwin').includes('/external disk/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'))
+  const win = candidatesFromProcesses([{ command: 'D:\\Apps\\Codex\\Codex.exe' }], 'win32')
+  assert.ok(win.includes('D:\\Apps\\Codex\\resources\\codex.exe'))
+  assert.ok(!win.includes('D:\\Apps\\Codex\\Codex.exe'))
+  assert.ok(candidatesFromProcesses([{ command: '/custom/bin/codex' }], 'linux').includes('/custom/bin/codex'))
+  assert.deepEqual(candidatesFromProcesses([{ command: '/usr/bin/unrelated' }], 'linux'), [])
+})
+
+test('process-discovered CLI is selected when standard paths are unavailable', async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'whale discovery '))
+  try {
+    const executable = path.join(temp, 'codex')
+    await writeFile(executable, 'fixture')
+    await chmod(executable, 0o755)
+    const runtime = await resolveCodex({ platform: 'linux', env: { PATH: '' }, home: temp, processes: [{ command: executable }] })
+    assert.equal(runtime.command, await import('node:fs/promises').then(fs => fs.realpath(executable)))
+  } finally { await rm(temp, { recursive: true, force: true }) }
+})

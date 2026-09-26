@@ -1,3 +1,4 @@
+import { readCodexProcesses } from './codex-process.mjs'
 import { spawn } from 'node:child_process'
 import { access, realpath, stat } from 'node:fs/promises'
 import { constants } from 'node:fs'
@@ -33,9 +34,36 @@ export function codexCandidates({ platform = process.platform, env = process.env
   return [...new Set(candidates.filter(Boolean))]
 }
 
+export function candidatesFromProcesses(rows, platform = process.platform) {
+  const paths = platform === 'win32' ? path.win32 : path.posix
+  const candidates = []
+  for (const { command } of rows) {
+    if (!paths.isAbsolute(command)) continue
+    if (platform === 'darwin') {
+      const app = command.match(/^(.*?\.app)\/Contents\//)?.[1]
+      if (app && /\/(?:Codex|ChatGPT)\.app$/i.test(app)) {
+        candidates.push(paths.join(app, 'Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'), paths.join(app, 'Contents/Resources/codex'), paths.join(app, 'Contents/Resources/codex-cli/bin/codex'))
+      }
+      if (/\/codex$/.test(command)) candidates.push(command)
+    } else {
+      const name = paths.basename(command)
+      if (!/^(?:codex|codex-cli)(?:\.exe)?$/i.test(name)) continue
+      const directory = paths.dirname(command)
+      const cli = platform === 'win32' ? 'codex.exe' : 'codex'
+      candidates.push(paths.join(directory, 'resources', cli), paths.join(directory, 'resources', 'codex-cli', 'bin', cli))
+      // Capitalized Codex is the desktop app, not the CLI server.
+      if (name === cli || name === 'codex-cli') candidates.push(command)
+    }
+  }
+  return [...new Set(candidates)]
+}
+
 export async function resolveCodex(options = {}) {
   const platform = options.platform || process.platform
-  for (const candidate of codexCandidates(options)) {
+  const env = options.env || process.env
+  const rows = options.processes ?? (env.CODEX_BINARY ? [] : await readCodexProcesses({ platform }).catch(() => []))
+  const candidates = [env.CODEX_BINARY, ...candidatesFromProcesses(rows, platform), ...codexCandidates(options)].filter(Boolean)
+  for (const candidate of new Set(candidates)) {
     try {
       await access(candidate, platform === 'win32' ? constants.F_OK : constants.X_OK)
       // Store execution aliases on Windows can have zero-sized placeholder files.

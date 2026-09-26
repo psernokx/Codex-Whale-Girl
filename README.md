@@ -76,7 +76,7 @@ npm start
 
 在相应系统上执行 `npm run dist:win`、`npm run dist:mac`、`npm run dist:linux` 生成安装包。macOS 的自动构建包未进行开发者签名和公证，Windows 包未做代码签名。
 
-使用 Codex 功能前，请安装并登录 Codex 桌面应用或 Codex CLI。应用会查找 macOS 应用内的 Codex、系统 PATH 以及常见 CLI 安装位置。找不到时，可通过 `CODEX_BINARY` 指定 Codex 可执行文件的完整路径；需要自定义数据目录时使用 `CODEX_HOME`。Windows 支持 npm 安装产生的 `codex.cmd`，无需经过命令解释器拼接路径。Windows 桌宠读取原生 Windows 的 Codex 会话，不会自动读取 WSL 内的会话。
+使用 Codex 功能前，请安装并登录 Codex 桌面应用或 Codex CLI。应用优先采用明确设置的 `CODEX_BINARY`，随后从正在运行的 Codex 程序定位安装目录，再查找常见安装位置和系统 PATH；支持 macOS、Windows 和 Linux 的自定义安装目录。进程发现只读取程序名称、路径及进程关系，不读取内存或命令行参数，详见 [进程发现与隐私](SECURITY.md#codex-进程发现与隐私)。找不到时，可通过 `CODEX_BINARY` 指定 Codex 可执行文件的完整路径；需要自定义数据目录时使用 `CODEX_HOME`。Windows 支持 npm 安装产生的 `codex.cmd`，无需经过命令解释器拼接路径。Windows 桌宠读取原生 Windows 的 Codex 会话，不会自动读取 WSL 内的会话。
 
 只装 CLI 也能读取可用的额度和任务信息；点击对话跳转需要系统注册了 `codex://` 协议的 Codex 桌面应用。部分 CLI 版本不提供累计 Token 等扩展字段，此时仍显示可用额度。Linux 使用 DeepSeek API Key 时需要可用的系统密钥环。
 

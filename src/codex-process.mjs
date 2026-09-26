@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { readlink } from 'node:fs/promises'
 import { promisify } from 'node:util'
 const execute = promisify(execFile)
 
@@ -17,20 +18,28 @@ export function hasCodexProcess(rows, ownPid = process.pid) {
   ))
 }
 
-export async function isCodexRunning() {
+export async function readCodexProcesses({ platform = process.platform, run = execute, link = readlink } = {}) {
   try {
     let rows
-    if (process.platform === 'win32') {
-      const { stdout } = await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress'], { windowsHide: true, timeout: 4000, maxBuffer: 4 * 1024 * 1024 })
+    if (platform === 'win32') {
+      const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath | ConvertTo-Json -Compress'], { windowsHide: true, timeout: 4000, maxBuffer: 4 * 1024 * 1024 })
       const parsed = JSON.parse(stdout)
-      rows = (Array.isArray(parsed) ? parsed : [parsed]).map(p => ({ pid: p.ProcessId, ppid: p.ParentProcessId, command: p.Name }))
+      rows = (Array.isArray(parsed) ? parsed : [parsed]).map(p => ({ pid: p.ProcessId, ppid: p.ParentProcessId, command: p.ExecutablePath || p.Name }))
     } else {
-      const { stdout } = await execute('ps', ['-axo', 'pid=,ppid=,comm='], { timeout: 4000, maxBuffer: 4 * 1024 * 1024 })
+      const { stdout } = await run('ps', ['-axo', 'pid=,ppid=,comm='], { timeout: 4000, maxBuffer: 4 * 1024 * 1024 })
       rows = stdout.split('\n').flatMap(line => {
         const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/)
         return match ? [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] }] : []
       })
     }
-    return hasCodexProcess(rows)
-  } catch { return false }
+    if (platform === 'linux') rows = await Promise.all(rows.map(async row => {
+      if (!hasCodexProcess([row], -1)) return row
+      try { return { ...row, command: await link(`/proc/${row.pid}/exe`) } } catch { return row }
+    }))
+    return rows
+  } catch { return [] }
+}
+
+export async function isCodexRunning() {
+  return hasCodexProcess(await readCodexProcesses())
 }
