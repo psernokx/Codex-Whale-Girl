@@ -10,6 +10,10 @@ const petLayers = [$('petSprite'), $('petSpriteNext')]
 const petStage = $('petStage')
 const bubble = $('speechBubble')
 const actionWheel = $('actionWheel')
+const extraActions = $('extraActions')
+const petVideo = $('petVideo')
+const extraIdleModes = ['swing', 'rubik', 'cat', 'stretch', 'dance', 'snack']
+let videoVersion = 0
 const petAnimator = createPetAnimator()
 const staticIdleAssets = {
   hover: '../assets/whale/whale-maid.png',
@@ -17,6 +21,7 @@ const staticIdleAssets = {
   game: '../assets/whale/whale-idle-game.png',
   movie: '../assets/whale/whale-idle-movie.png',
   running: '../assets/whale/whale-idle-running.png',
+  ...Object.fromEntries(extraIdleModes.map(mode => [mode, `../assets/extra-actions/${mode}.png`])),
 }
 const petAssets = {
   idle: staticIdleAssets.hover,
@@ -286,13 +291,31 @@ function transitionPet(state, assetOverride = null, extraClass = '') {
   const nextIndex = 1 - activePetLayer
   const next = petLayers[nextIndex]
   if (assetOverride) petAnimator.stop()
-  const dynamic = !assetOverride && petAnimator.start(next, state, selectedIdle, dynamicPetEnabled)
+  const extra = !assetOverride && state === 'idle' && extraIdleModes.includes(selectedIdle) && dynamicPetEnabled && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const dynamic = !assetOverride && !extra && petAnimator.start(next, state, selectedIdle, dynamicPetEnabled)
+  if (extra) petAnimator.stop()
+  const videoToken = ++videoVersion
+  petVideo.pause()
+  petVideo.onloadeddata = null
+  petVideo.classList.remove('is-visible')
+  if (extra) {
+    petVideo.src = `../assets/extra-actions/${selectedIdle}.webm`
+    petVideo.onloadeddata = () => {
+      if (videoToken !== videoVersion) return
+      petVideo.play().then(() => {
+        if (videoToken !== videoVersion) return
+        petLayers.forEach(layer => layer.classList.remove('is-visible'))
+        petVideo.classList.add('is-visible')
+      }).catch(() => {})
+    }
+    petVideo.load()
+  } else { petVideo.removeAttribute('src'); petVideo.load() }
   const statusPoster = state.startsWith('codex-') ? petStatePoster(state) : null
   const fallbackState = state.startsWith('codex-')
     ? ({ waiting: 'busy', completed: 'success', error: 'error' }[state.slice(6)] || 'working')
     : state
   if (!dynamic) next.src = assetOverride || statusPoster || (state === 'idle' ? staticIdleAssets[selectedIdle] : (petAssets[fallbackState] || petAssets.idle))
-  next.className = `pet-image state-${state}${dynamic || statusPoster ? ' dynamic-pet' : ''}${state === 'idle' && !dynamic ? ` idle-${selectedIdle} idle-float` : ''}${extraClass ? ` ${extraClass}` : ''}`
+  next.className = `pet-image state-${state}${dynamic || statusPoster ? ' dynamic-pet' : ''}${state === 'idle' && !dynamic ? ` idle-${selectedIdle} idle-float` : ''}${state === 'idle' && extraIdleModes.includes(selectedIdle) ? ' extra-poster' : ''}${extraClass ? ` ${extraClass}` : ''}`
   void next.offsetWidth
   previous.classList.remove('is-visible')
   next.classList.add('is-visible')
@@ -310,6 +333,7 @@ function changeIdleMode(mode) {
   selectedIdle = mode
   localStorage.setItem('whaleIdleMode', selectedIdle)
   actionWheel.classList.add('hidden')
+  extraActions.classList.add('hidden')
   actionWheel.querySelectorAll('[data-idle]').forEach((button) => button.classList.toggle('selected', button.dataset.idle === selectedIdle))
   speak(pickDialogue(mode === 'hover' ? 'idle' : mode))
   petInteractionUntil = Date.now() + 10000
@@ -399,6 +423,7 @@ function setPanel(panel = null) {
   bubble.classList.toggle('is-panel-hidden', Boolean(panel))
   if (panel) api.setBubbleExpanded(false)
   actionWheel.classList.add('hidden')
+  extraActions.classList.add('hidden')
   api.setPanelOpen(Boolean(panel))
 }
 
@@ -425,6 +450,7 @@ function setPetChat(open) {
   settings.classList.add('hidden')
   bubble.classList.toggle('is-panel-hidden', open)
   actionWheel.classList.add('hidden')
+  extraActions.classList.add('hidden')
   api.setBubbleExpanded(false)
   api.setPanelOpen(open)
   if (open) {
@@ -494,7 +520,20 @@ petStage.addEventListener('dblclick', () => {
 petStage.addEventListener('contextmenu', (event) => { event.preventDefault(); setPanel('settings') })
 $('statusPill').addEventListener('click', (event) => { event.stopPropagation(); setPetChat(true) })
 $('statusPill').addEventListener('dblclick', (event) => event.stopPropagation())
+extraActions.addEventListener('click', event => {
+  const button = event.target.closest('[data-idle]')
+  if (button) changeIdleMode(button.dataset.idle)
+})
+$('closeExtraActions').addEventListener('click', () => extraActions.classList.add('hidden'))
+document.addEventListener('pointerdown', event => {
+  if (!event.target.closest('#extraActions, #actionWheel')) extraActions.classList.add('hidden')
+})
 actionWheel.addEventListener('click', (event) => {
+  if (event.target.closest('[data-action="more"]')) {
+    actionWheel.classList.add('hidden')
+    extraActions.classList.remove('hidden')
+    return
+  }
   if (event.target.closest('[data-action="usage"]')) {
     setUsageTab('codex')
     setPanel('dashboard')

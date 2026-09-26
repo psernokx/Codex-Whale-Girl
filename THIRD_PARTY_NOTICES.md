@@ -98,3 +98,14 @@ The completed-turn aggregation and three-bucket pricing design was informed by
 
 This project contains an independent implementation adapted for a standalone
 Electron application.
+
+## Additional daily actions (direct upstream import)
+
+The six VP9 Alpha WebM clips and extracted PNG posters in `assets/extra-actions/`
+come directly from PC2005-cloud/dsh-pet (MIT, Copyright (c) 2026 PC2005-cloud).
+The license is preserved in `assets/dsh-pet-LICENSE.txt`. `source.json` records
+the upstream commit, original Chinese filenames and downloaded SHA256 hashes.
+These clips are upstream 640x360 / 24 FPS assets, not part of the 2,600-frame
+super-resolution batch and not yet interpolated to 60 FPS.
+
+Source: https://github.com/PC2005-cloud/dsh-pet/tree/631c5310b047931404978152fdc7865413c153ec/dsh-pet/assets/webm

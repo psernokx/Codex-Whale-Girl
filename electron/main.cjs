@@ -482,6 +482,26 @@ async function createWindow() {
           if ((await readConfig()).usageScale !== usage) throw new Error('Usage size not persisted')
         }
 
+        for (const mode of ['swing', 'rubik', 'cat', 'stretch', 'dance', 'snack']) {
+          await mainWindow.webContents.executeJavaScript(`document.querySelector('#extraActions [data-idle="${mode}"]').click()`)
+          const result = await mainWindow.webContents.executeJavaScript(`new Promise((resolve,reject) => {
+            const video=document.getElementById('petVideo');const deadline=Date.now()+6000;
+            const timer=setInterval(()=>{
+              if(video.readyState>=2 && video.currentTime>0.12 && video.classList.contains('is-visible')) {
+                clearInterval(timer);const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
+                const ctx=canvas.getContext('2d');ctx.drawImage(video,0,0);resolve({width:video.videoWidth,alpha:ctx.getImageData(0,0,1,1).data[3],src:video.getAttribute('src')});
+              } else if(Date.now()>deadline){clearInterval(timer);reject(new Error('Extra animation did not play'))}
+            },50);
+          })`)
+          // VP9 alpha compression can leave a 1/255 residual at transparent corners.
+          if(result.width!==640 || result.alpha>3 || !result.src.endsWith(mode+'.webm')) throw new Error('Extra action failed: '+JSON.stringify(result))
+        }
+        await fs.writeFile(path.join(artifactDir, 'extra-action-snack.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        mainWindow.webContents.send('whale:pet-state', {state:'codex-running'})
+        await new Promise(resolve=>setTimeout(resolve,250))
+        if(await mainWindow.webContents.executeJavaScript("document.getElementById('petVideo').classList.contains('is-visible')")) throw new Error('Extra video covered work state')
+        await mainWindow.webContents.executeJavaScript("document.querySelector('#actionWheel [data-idle=hover]').click()")
+
         quitting = true
         app.quit()
       } catch (error) {

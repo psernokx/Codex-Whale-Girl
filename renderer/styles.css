@@ -152,3 +152,10 @@ button { cursor: pointer; }
 .pet-size-control { display:block; margin:8px 0 12px; }
 .pet-size-control output { float:right; }
 .pet-size-control input[type="range"] { display:block; width:100%; padding:0; margin-top:8px; accent-color:#86cde5; }
+
+.pet-image.extra-video, .pet-image.extra-poster { z-index:2; width:520px; height:292px; right:-114px; bottom:-18px; object-fit:contain; }
+.action-wheel button:nth-child(7) { left:0; bottom:12px; width:90px; }
+.extra-action-menu { position:absolute; z-index:9; right:12px; bottom:58px; width:260px; padding:12px; border-radius:18px; border:1px solid #8b9dc0; background:rgba(24,38,73,.96); color:#edf4ff; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.extra-action-menu header { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; font-weight:700; }
+.extra-action-menu button { padding:8px; border-radius:12px; border:1px solid #8095ba; background:#31466a; color:#f6eddb; font-size:13px; }
+.extra-action-menu header button { padding:2px 8px; }

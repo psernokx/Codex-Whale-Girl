@@ -86,11 +86,19 @@
       <div class="actions"><button id="openData">数据目录</button><button id="saveSettings" class="primary">保存</button></div>
     </section>
 
-    <section class="action-wheel hidden no-drag" id="actionWheel" aria-label="静态待机动作轮盘">
+    <section class="action-wheel hidden no-drag" id="actionWheel" aria-label="待机动作轮盘">
       <button data-idle="swing">荡秋千</button><button data-idle="game">玩游戏</button>
       <button data-idle="hover" class="selected">悬浮</button><button data-idle="movie">看电影</button>
       <button data-idle="running">跑步减肥</button>
       <button data-action="usage">查看用量</button>
+      <button data-action="more">更多动作</button>
+    </section>
+
+    <section class="extra-action-menu hidden no-drag" id="extraActions" aria-label="更多动作">
+      <header>更多动作 <button id="closeExtraActions" type="button" aria-label="收起更多动作">×</button></header>
+      <button data-idle="swing">荡秋千</button><button data-idle="rubik">玩魔方</button>
+      <button data-idle="cat">撸猫</button><button data-idle="stretch">伸懒腰</button>
+      <button data-idle="dance">跳舞</button><button data-idle="snack">吃零食</button>
     </section>
 
     <section class="pet-chat hidden no-drag" id="petChat" aria-label="问问小鲸鱼">
@@ -102,6 +110,7 @@
     <section class="pet-stage state-idle" id="petStage" title="单击摸头；双击切换待机；长按拖动；右键设置">
       <img class="pet-image is-visible state-idle" id="petSprite" src="../assets/whale/whale-maid.png" alt="深蓝女仆鲸鱼娘" draggable="false" />
       <img class="pet-image" id="petSpriteNext" src="../assets/whale/whale-maid.png" alt="" draggable="false" />
+      <video id="petVideo" class="pet-image extra-video" muted playsinline loop preload="none" aria-label="小鲸鱼动作"></video>
       <button class="status-pill" id="statusPill" type="button">问问小鲸鱼</button>
     </section>
 

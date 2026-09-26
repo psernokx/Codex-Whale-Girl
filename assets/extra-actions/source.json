@@ -1,0 +1,44 @@
+{
+  "repository": "https://github.com/PC2005-cloud/dsh-pet",
+  "license": "MIT",
+  "actions": {
+    "swing": {
+      "title": "荡秋千",
+      "source": "dsh-pet/assets/webm/荡秋千.webm",
+      "sha256": "f32ea98e9c04553ae39939cd76c469192ebc19d98b90ebf93ec4b88bf95b25c9"
+    },
+    "rubik": {
+      "title": "原地专心玩魔方",
+      "source": "dsh-pet/assets/webm/原地专心玩魔方.webm",
+      "sha256": "ad54da175ba86b19a84b73b3169fb418b2df016560bb274283f200aca351e712"
+    },
+    "cat": {
+      "title": "撸猫",
+      "source": "dsh-pet/assets/webm/撸猫.webm",
+      "sha256": "068d84e944dfce17de1c5a2ee2a4bc391e2848dad88a7df4877ebf23cf38bcec"
+    },
+    "stretch": {
+      "title": "超大伸懒腰",
+      "source": "dsh-pet/assets/webm/超大伸懒腰.webm",
+      "sha256": "0ac66d918cc5efd49be1273c3830de73eae5f9bdcd5fcb968d1b2f9b487705ad"
+    },
+    "dance": {
+      "title": "可爱宅舞",
+      "source": "dsh-pet/assets/webm/可爱宅舞.webm",
+      "sha256": "4f737e44ea67c20368bdce474b951902c87c37991fb0750da8ed7794df6ec55c"
+    },
+    "snack": {
+      "title": "大口吃零食",
+      "source": "dsh-pet/assets/webm/大口吃零食.webm",
+      "sha256": "fdacb534a828b0c669f22a54e8da9bb9b5d731e0132dd5ea946f7badc9229a39"
+    }
+  },
+  "sourceCommit": "631c5310b047931404978152fdc7865413c153ec",
+  "encoding": {
+    "format": "VP9 Alpha WebM",
+    "width": 640,
+    "height": 360,
+    "fps": 24,
+    "processing": "Original upstream videos; not upscaled or interpolated"
+  }
+}
