@@ -33,3 +33,7 @@ Thumbs.db
 
 # Locally downloaded upscaling runtime and models
 tools-local/
+
+# Offline interpolation environment
+.venv-interpolation/
+__pycache__/
