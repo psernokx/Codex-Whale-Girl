@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('whaleAPI', {
   getSnapshot: () => ipcRenderer.invoke('whale:get-snapshot'),
+  getCodexUsage: (force = false) => ipcRenderer.invoke('whale:get-codex-usage', force),
+  getCodexThreads: (force = false) => ipcRenderer.invoke('whale:get-codex-threads', force),
+  openCodexThread: (threadId) => ipcRenderer.invoke('whale:open-codex-thread', threadId),
   getConfig: () => ipcRenderer.invoke('whale:get-config'),
   saveConfig: (patch) => ipcRenderer.invoke('whale:save-config', patch),
   refreshBalance: () => ipcRenderer.invoke('whale:refresh-balance'),
@@ -24,5 +27,10 @@ contextBridge.exposeInMainWorld('whaleAPI', {
     const listener = (_event, value) => callback(value)
     ipcRenderer.on('whale:pet-state', listener)
     return () => ipcRenderer.removeListener('whale:pet-state', listener)
+  },
+  onCodexActivity: (callback) => {
+    const listener = (_event, value) => callback(value)
+    ipcRenderer.on('whale:codex-activity', listener)
+    return () => ipcRenderer.removeListener('whale:codex-activity', listener)
   },
 })

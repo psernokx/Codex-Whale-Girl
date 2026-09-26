@@ -5,12 +5,14 @@ const fs = require('node:fs/promises')
 const { pathToFileURL } = require('node:url')
 
 const smokeMode = process.argv.includes('--smoke-test')
+const codexSmokeMode = process.argv.includes('--codex-smoke-test')
+const animationSmokeMode = process.argv.includes('--animation-smoke-test')
 const COMPACT_SIZE = { width: 370, height: 360 }
-const PANEL_SIZE = { width: 390, height: 520 }
+const PANEL_SIZE = { width: 630, height: 520 }
 const BUBBLE_SIZE = { width: 370, height: 620 }
 const projectRoot = path.join(__dirname, '..')
 
-if (smokeMode) app.setPath('userData', path.join(process.cwd(), '.smoke-user-data'))
+if (smokeMode || codexSmokeMode || animationSmokeMode) app.setPath('userData', path.join(process.cwd(), '.smoke-user-data'))
 
 let mainWindow
 let tray
@@ -24,6 +26,16 @@ let chatInFlight = false
 let lastChatAt = 0
 let panelOpen = false
 let bubbleExpanded = false
+let codexUsageCache = null
+let codexUsageFetchedAt = 0
+let codexUsageInFlight = null
+let codexThreadsCache = null
+let codexThreadsFetchedAt = 0
+let codexThreadsInFlight = null
+let codexActivityTimer = null
+let codexActivityPolling = false
+let lastCodexActivityKey = ''
+let codexMonitorFailures = 0
 
 const defaultConfig = {
   alwaysOnTop: true,
@@ -37,14 +49,62 @@ const defaultConfig = {
 
 async function loadModules() {
   const root = path.join(__dirname, '..')
-  const [pricing, summaryModule, storeModule, securityModule, chatModule] = await Promise.all([
+  const [pricing, summaryModule, storeModule, securityModule, chatModule, codexUsageModule, codexThreadsModule, codexMonitorModule] = await Promise.all([
     import(pathToFileURL(path.join(root, 'src', 'pricing.mjs')).href),
     import(pathToFileURL(path.join(root, 'src', 'summary.mjs')).href),
     import(pathToFileURL(path.join(root, 'src', 'store.mjs')).href),
     import(pathToFileURL(path.join(root, 'src', 'security.mjs')).href),
     import(pathToFileURL(path.join(root, 'src', 'chat.mjs')).href),
+    import(pathToFileURL(path.join(root, 'src', 'codex-usage.mjs')).href),
+    import(pathToFileURL(path.join(root, 'src', 'codex-threads.mjs')).href),
+    import(pathToFileURL(path.join(root, 'src', 'codex-monitor.mjs')).href),
   ])
-  modules = { ...pricing, ...summaryModule, ...storeModule, ...securityModule, ...chatModule }
+  modules = { ...pricing, ...summaryModule, ...storeModule, ...securityModule, ...chatModule, ...codexUsageModule, ...codexThreadsModule, ...codexMonitorModule }
+}
+
+async function getCodexUsage(force = false) {
+  if (!force && codexUsageCache && Date.now() - codexUsageFetchedAt < 60_000) return codexUsageCache
+  if (!codexUsageInFlight) {
+    codexUsageInFlight = modules.readCodexUsage().then((value) => {
+      codexUsageCache = value
+      codexUsageFetchedAt = Date.now()
+      return value
+    }).finally(() => { codexUsageInFlight = null })
+  }
+  return codexUsageInFlight
+}
+
+async function getCodexThreads(force = false) {
+  if (!force && codexThreadsCache && Date.now() - codexThreadsFetchedAt < 15_000) return codexThreadsCache
+  if (!codexThreadsInFlight) {
+    codexThreadsInFlight = modules.readCodexThreads().then((value) => {
+      codexThreadsCache = value
+      codexThreadsFetchedAt = Date.now()
+      return value
+    }).finally(() => { codexThreadsInFlight = null })
+  }
+  return codexThreadsInFlight
+}
+
+async function publishCodexActivity() {
+  if (codexActivityPolling || !mainWindow || mainWindow.isDestroyed()) return
+  codexActivityPolling = true
+  try {
+    const activity = await modules.readCodexActivity(await getCodexThreads())
+    codexMonitorFailures = 0
+    const key = `${activity.phase}:${activity.threadId}:${activity.activeCount}:${activity.title}`
+    if (key !== lastCodexActivityKey) {
+      lastCodexActivityKey = key
+      mainWindow.webContents.send('whale:codex-activity', activity)
+    }
+  } catch {
+    codexMonitorFailures++
+    if (codexMonitorFailures >= 3 && lastCodexActivityKey !== 'idle') {
+      lastCodexActivityKey = 'idle'
+      mainWindow.webContents.send('whale:codex-activity', { phase: 'idle', threadId: null, title: null, activeCount: 0 })
+    }
+  }
+  finally { codexActivityPolling = false }
 }
 
 async function readConfig() {
@@ -281,7 +341,181 @@ async function createWindow() {
   })
   mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'))
-  mainWindow.once('ready-to-show', () => mainWindow.show())
+  mainWindow.once('ready-to-show', () => {
+    if (animationSmokeMode) {
+      mainWindow.setIgnoreMouseEvents(true)
+      mainWindow.showInactive()
+    } else mainWindow.show()
+  })
+  if (!smokeMode && !codexSmokeMode && !animationSmokeMode) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      void publishCodexActivity()
+      codexActivityTimer = setInterval(() => { void publishCodexActivity() }, 2000)
+    })
+  }
+  if (animationSmokeMode) {
+    mainWindow.webContents.once('did-finish-load', async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        await mainWindow.webContents.executeJavaScript(`(() => {
+          const toggle = document.getElementById('dynamicPet')
+          toggle.checked = true
+          toggle.dispatchEvent(new Event('change'))
+        })()`)
+        const artifactDir = path.join(process.cwd(), 'artifacts')
+        await fs.mkdir(artifactDir, { recursive: true })
+        for (const [phase, clip, text] of [
+          ['running', 'working', '工作中'],
+          ['searching', 'working_command', '查找资料中'],
+          ['error', 'error', '遇到问题了'],
+        ]) {
+          mainWindow.webContents.send('whale:pet-state', { state: `codex-${phase}` })
+          await new Promise((resolve) => setTimeout(resolve, phase === 'running' ? 5300 : 2700))
+          const result = await mainWindow.webContents.executeJavaScript(`(() => {
+            const img = document.querySelector('.pet-image.is-visible')
+            return { src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth > 0,
+              text: document.getElementById('bubbleText').textContent }
+          })()`)
+          if (!result.loaded || !result.src.includes('/' + clip + '/') || result.text !== text) throw new Error(JSON.stringify(result))
+          await fs.writeFile(path.join(artifactDir, `animation-${phase}.png`), (await mainWindow.webContents.capturePage()).toPNG())
+          console.log('[animation-smoke]', phase, result.src, result.text)
+        }
+        await mainWindow.webContents.executeJavaScript(`(() => {
+          const toggle = document.getElementById('dynamicPet')
+          toggle.checked = false
+          toggle.dispatchEvent(new Event('change'))
+        })()`)
+        for (const [phase, clip] of [['running', 'working'], ['searching', 'working_command'], ['error', 'error']]) {
+          mainWindow.webContents.send('whale:pet-state', { state: `codex-${phase}` })
+          await new Promise((resolve) => setTimeout(resolve, 200))
+          const src = await mainWindow.webContents.executeJavaScript("document.querySelector('.pet-image.is-visible').getAttribute('src')")
+          if (!src.endsWith(clip + '/' + clip + (clip === 'working' ? '_121.webp' : '_061.webp'))) throw new Error('Static status mismatch: ' + src)
+        }
+        await mainWindow.webContents.executeJavaScript(`(() => { const toggle = document.getElementById('dynamicPet'); toggle.checked = true; toggle.dispatchEvent(new Event('change')) })()`)
+        for (const message of ['放我下来！', '抓稳一点……不对，快把我放稳！']) {
+          mainWindow.webContents.send('whale:pet-state', { state: 'dragging', message })
+          await new Promise((resolve) => setTimeout(resolve, 300))
+          // Dragging uses local dialogue; set both widths explicitly for the layout check.
+          await mainWindow.webContents.executeJavaScript(`document.getElementById('bubbleText').textContent = ${JSON.stringify(message)}`)
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          const anchor = await mainWindow.webContents.executeJavaScript(`(() => {
+            const bubble = document.getElementById('speechBubble')
+            const pet = document.getElementById('petStage').getBoundingClientRect()
+            return { tip: bubble.offsetLeft + 2 + parseFloat(getComputedStyle(bubble).getPropertyValue('--tail-left')),
+              head: pet.left + pet.width / 2 }
+          })()`)
+          if (Math.abs(anchor.tip - anchor.head) > 3) throw new Error('Bubble anchor mismatch: ' + JSON.stringify(anchor))
+        }
+        await fs.writeFile(path.join(artifactDir, 'bubble-drag-anchor.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        quitting = true
+        app.quit()
+      } catch (error) {
+        console.error('[animation-smoke]', error)
+        quitting = true
+        app.exit(1)
+      }
+    })
+  }
+  if (codexSmokeMode) {
+    mainWindow.webContents.once('did-finish-load', async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        mainWindow.webContents.send('whale:codex-activity', { phase: 'searching', threadId: 'smoke-thread', title: 'Smoke', activeCount: 1 })
+        await new Promise((resolve) => setTimeout(resolve, 180))
+        const liveActivity = await mainWindow.webContents.executeJavaScript(`({
+          status: document.getElementById('codexLiveStatus').textContent,
+          frame: document.querySelector('.pet-image.is-visible')?.getAttribute('src'),
+        })`)
+        if (!liveActivity.status.includes('查找') || !liveActivity.frame.includes('assets/dsh-pet/working_command/')) throw new Error(`Codex activity animation failed: ${JSON.stringify(liveActivity)}`)
+        mainWindow.webContents.send('whale:codex-activity', { phase: 'idle', threadId: null, title: null, activeCount: 0 })
+        const wheel = await mainWindow.webContents.executeJavaScript(`(() => {
+          document.getElementById('petStage').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+          const menu = document.getElementById('actionWheel')
+          return {
+            visible: !menu.classList.contains('hidden'),
+            modes: [...menu.querySelectorAll('[data-idle]')].map((button) => button.dataset.idle),
+            usage: menu.querySelector('[data-action="usage"]')?.textContent,
+            topActions: [...document.querySelectorAll('.window-actions button')].map((button) => button.id),
+          }
+        })()`)
+        if (!wheel.visible || wheel.modes.join(',') !== 'swing,game,hover,movie,running' || wheel.usage !== '查看用量' || wheel.topActions.join(',') !== 'minimize,quit') throw new Error(`Action wheel failed: ${JSON.stringify(wheel)}`)
+        const artifactDir = path.join(process.cwd(), 'artifacts')
+        await fs.mkdir(artifactDir, { recursive: true })
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        await fs.writeFile(path.join(artifactDir, 'action-wheel.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        const actionsWork = await mainWindow.webContents.executeJavaScript(`(() => {
+          const menu = document.getElementById('actionWheel')
+          const pet = document.getElementById('petStage')
+          return [...menu.querySelectorAll('[data-idle]')].every((button) => {
+            button.click()
+            const selected = button.classList.contains('selected') && localStorage.getItem('whaleIdleMode') === button.dataset.idle
+            pet.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+            return selected && !menu.classList.contains('hidden')
+          })
+        })()`)
+        if (!actionsWork) throw new Error('Original idle actions did not work')
+        await mainWindow.webContents.executeJavaScript("document.querySelector('#actionWheel [data-action=usage]').click()")
+        let state
+        for (let attempt = 0; attempt < 40; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          state = await mainWindow.webContents.executeJavaScript(`({
+            remaining: document.getElementById('codexRemaining').textContent,
+            lifetime: document.getElementById('codexLifetimeTokens').textContent,
+            status: document.getElementById('codexStatus').textContent,
+          })`)
+          if (state.remaining.includes('剩余') && state.lifetime !== '—') break
+        }
+        if (!state?.remaining.includes('剩余') || state.lifetime === '—') throw new Error(`Codex dashboard failed: ${JSON.stringify(state)}`)
+        await fs.writeFile(path.join(artifactDir, 'codex-dashboard.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        const layout = await mainWindow.webContents.executeJavaScript(`(() => {
+          const panel = document.getElementById('dashboard').getBoundingClientRect()
+          const pet = document.getElementById('petStage').getBoundingClientRect()
+          return { panelRight: panel.right, petLeft: pet.left }
+        })()`)
+        if (layout.panelRight > layout.petLeft) throw new Error(`Dashboard covers the pet: ${JSON.stringify(layout)}`)
+        await mainWindow.webContents.executeJavaScript("document.getElementById('showDeepSeekTab').click()")
+        await new Promise((resolve) => setTimeout(resolve, 250))
+        const deepSeekVisible = await mainWindow.webContents.executeJavaScript(`(() => {
+          const view = document.getElementById('deepSeekView')
+          return !view.hidden && getComputedStyle(view).display !== 'none' &&
+            getComputedStyle(document.getElementById('codexView')).display === 'none' &&
+            Boolean(document.getElementById('balance')) && Boolean(document.getElementById('openDeepSeekChat'))
+        })()`)
+        if (!deepSeekVisible) throw new Error('DeepSeek features are not visible')
+        await fs.writeFile(path.join(artifactDir, 'deepseek-dashboard.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        await mainWindow.webContents.executeJavaScript("document.getElementById('showThreadsTab').click()")
+        let conversationState
+        for (let attempt = 0; attempt < 40; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 250))
+          conversationState = await mainWindow.webContents.executeJavaScript(`({
+            visible: !document.getElementById('codexThreadsView').hidden,
+            count: document.querySelectorAll('#codexThreadList .thread-card').length,
+            preview: document.querySelector('#codexThreadList .thread-card span')?.textContent,
+          })`)
+          if (conversationState.count) break
+        }
+        if (!conversationState.visible || !conversationState.count || !conversationState.preview) throw new Error(`Codex conversations failed: ${JSON.stringify(conversationState)}`)
+        await fs.writeFile(path.join(artifactDir, 'codex-conversations.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        const animation = await mainWindow.webContents.executeJavaScript(`(async () => {
+          document.querySelector('#actionWheel [data-idle="hover"]').click()
+          await new Promise((resolve) => setTimeout(resolve, 150))
+          const first = document.querySelector('.pet-image.is-visible').getAttribute('src')
+          await new Promise((resolve) => setTimeout(resolve, 300))
+          const second = document.querySelector('.pet-image.is-visible').getAttribute('src')
+          return { first, second, enabled: document.getElementById('dynamicPet').checked }
+        })()`)
+        if (!animation.enabled || animation.first === animation.second || !animation.second.includes('assets/dsh-pet/idle/')) throw new Error(`Dynamic pet failed: ${JSON.stringify(animation)}`)
+        await fs.writeFile(path.join(artifactDir, 'dynamic-pet.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        console.log(`[codex-smoke] ${state.remaining}, lifetime ${state.lifetime}`)
+        quitting = true
+        app.quit()
+      } catch (error) {
+        console.error('[codex-smoke]', error)
+        quitting = true
+        app.exit(1)
+      }
+    })
+  }
   if (smokeMode) {
     mainWindow.webContents.once('did-finish-load', async () => {
       try {
@@ -313,7 +547,7 @@ async function createWindow() {
       const wheelImage = await mainWindow.webContents.capturePage()
       await fs.writeFile(path.join(artifactDir, 'smoke-wheel.png'), wheelImage.toPNG())
       await mainWindow.webContents.executeJavaScript("document.querySelector('[data-idle=game]').click()")
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      await new Promise((resolve) => setTimeout(resolve, phase === 'running' ? 5300 : 2700))
       const gameSources = await mainWindow.webContents.executeJavaScript(`(async()=>{const first=document.querySelector('.pet-image.is-visible').getAttribute('src');await new Promise(r=>setTimeout(r,450));return [first,document.querySelector('.pet-image.is-visible').getAttribute('src')]})()`)
       if (gameSources[0] !== gameSources[1] || !/whale-idle-game\.png/.test(gameSources[0])) throw new Error(`smoke static game idle failed: ${gameSources.join(',')}`)
       await mainWindow.webContents.executeJavaScript("document.getElementById('statusPill').click()")
@@ -371,6 +605,13 @@ function handle(channel, listener) {
 
 function registerIpc() {
   handle('whale:get-snapshot', () => snapshot())
+  handle('whale:get-codex-usage', (_event, force) => getCodexUsage(Boolean(force)))
+  handle('whale:get-codex-threads', (_event, force) => getCodexThreads(Boolean(force)))
+  handle('whale:open-codex-thread', async (_event, threadId) => {
+    const threads = await getCodexThreads()
+    if (!threads.some((thread) => thread.id === threadId)) throw new Error('找不到这条 Codex 对话')
+    await shell.openExternal(`codex://threads/${encodeURIComponent(threadId)}`)
+  })
   handle('whale:get-config', () => publicConfig())
   handle('whale:refresh-balance', () => refreshBalance())
   handle('whale:ask', (_event, question) => askWhale(question))
@@ -443,4 +684,4 @@ app.whenReady().then(async () => {
 
 app.on('second-instance', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } })
 app.on('window-all-closed', (event) => event.preventDefault())
-app.on('before-quit', () => { quitting = true; clearInterval(dragTimer) })
+app.on('before-quit', () => { quitting = true; clearInterval(dragTimer); clearInterval(codexActivityTimer) })

@@ -1,7 +1,7 @@
 {
   "name": "whale-girl-dashboard",
-  "version": "1.8.0",
-  "description": "Windows whale-girl desktop companion with DeepSeek balance, usage tracking, and character chat.",
+  "version": "1.9.0",
+  "description": "Cross-platform whale desktop companion with Codex activity and usage plus DeepSeek chat and balance.",
   "main": "electron/main.cjs",
   "type": "module",
   "author": "Whale Girl Dashboard contributors",
@@ -13,7 +13,11 @@
     "test": "node --test",
     "prepublish:check": "node scripts/prepublish-check.mjs",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win nsis"
+    "dist": "electron-builder --publish never",
+    "smoke:animation": "electron . --animation-smoke-test",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:mac": "electron-builder --mac dmg zip --universal --publish never",
+    "dist:linux": "electron-builder --linux AppImage tar.gz --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^43.4.1",
@@ -48,6 +52,29 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "小鲸鱼看板娘"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "WhaleGirl-${version}-mac-${arch}.${ext}"
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "artifactName": "WhaleGirl-${version}-linux-${arch}.${ext}"
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/psernokx/Codex-Whale-Girl.git"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

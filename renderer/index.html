@@ -15,22 +15,52 @@
 
     <section class="dashboard hidden" id="dashboard">
       <header class="panel-header no-drag">
-        <div><small>DEEPSEEK SURVIVAL MODE</small><h1>Token 饭碗</h1></div>
+        <div><small>WHALE GIRL DASHBOARD</small><h1>Token 饭碗</h1></div>
         <button class="icon-button" id="closePanel" title="收起">×</button>
       </header>
-      <div class="balance-card">
-        <div><span>API 余额</span><strong id="balance">未连接</strong></div>
-        <button id="refreshBalance">刷新</button>
+      <nav class="service-tabs no-drag" aria-label="用量来源">
+        <button id="showCodexTab" class="selected" type="button">Codex</button>
+        <button id="showDeepSeekTab" type="button">DeepSeek</button>
+        <button id="showThreadsTab" type="button">对话</button>
+      </nav>
+      <div id="codexView">
+      <div class="balance-card codex-card">
+        <div><span id="codexWindowLabel">Codex 额度</span><strong id="codexRemaining">读取中</strong></div>
+        <button id="refreshCodex">刷新</button>
       </div>
-      <div class="stats-grid">
-        <article><span>今日费用</span><strong id="todayCost">¥0</strong></article>
-        <article><span>今日 Token</span><strong id="todayTokens">0</strong></article>
-        <article><span>本月费用</span><strong id="monthCost">¥0</strong></article>
-        <article><span>本月请求</span><strong id="monthRequests">0</strong></article>
+      <div class="codex-meter"><div id="codexMeterFill"></div></div>
+      <div class="token-row"><span>下次重置</span><b id="codexReset">—</b></div>
+      <div class="token-row" id="codexOtherRow" hidden><span id="codexOtherLabel">另一额度</span><b id="codexOtherRemaining">—</b></div>
+      <div class="stats-grid codex-stats">
+        <article><span>最近一天 Token</span><strong id="codexTodayTokens">—</strong></article>
+        <article><span>累计 Token</span><strong id="codexLifetimeTokens">—</strong></article>
       </div>
-      <div class="token-row"><span>缓存命中</span><b id="hitTokens">0</b></div>
-      <div class="token-row"><span>未命中输入</span><b id="missTokens">0</b></div>
-      <div class="token-row"><span>模型输出</span><b id="outputTokens">0</b></div>
+      <div class="token-row"><span>连续使用</span><b id="codexStreak">—</b></div>
+      <p class="codex-status" id="codexStatus">读取本机 Codex 登录信息中…</p>
+      <p class="codex-note">额度与 Token 活动分别统计</p>
+      </div>
+      <div id="codexThreadsView" hidden>
+        <div class="threads-heading"><div><strong>最近对话</strong><small>查看最近一轮消息，点击后在 Codex 中打开</small></div><button id="refreshCodexThreads" type="button">刷新</button></div>
+        <p class="codex-live-status" id="codexLiveStatus">正在读取工作状态…</p>
+        <div class="thread-list" id="codexThreadList" aria-live="polite">正在读取对话…</div>
+        <p class="codex-note">从本机任务事件读取工作阶段；对话按最近更新时间排列</p>
+      </div>
+      <div id="deepSeekView" hidden>
+        <div class="balance-card">
+          <div><span>API 余额</span><strong id="balance">未连接</strong></div>
+          <button id="refreshBalance">刷新</button>
+        </div>
+        <div class="stats-grid">
+          <article><span>今日费用</span><strong id="todayCost">¥0</strong></article>
+          <article><span>今日 Token</span><strong id="todayTokens">0</strong></article>
+          <article><span>本月费用</span><strong id="monthCost">¥0</strong></article>
+          <article><span>本月请求</span><strong id="monthRequests">0</strong></article>
+        </div>
+        <div class="token-row"><span>缓存命中</span><b id="hitTokens">0</b></div>
+        <div class="token-row"><span>未命中输入</span><b id="missTokens">0</b></div>
+        <div class="token-row"><span>模型输出</span><b id="outputTokens">0</b></div>
+        <div class="actions no-drag"><button id="openDeepSeekChat">问问小鲸鱼</button></div>
+      </div>
       <div class="actions no-drag">
         <button id="openSettings">设置</button>
       </div>
@@ -48,6 +78,7 @@
       </div>
       <div class="settings-card compact-card">
         <div class="switch-row"><span>始终置顶</span><input id="alwaysOnTop" type="checkbox" /></div>
+        <div class="switch-row"><span>动态小鲸鱼</span><input id="dynamicPet" type="checkbox" /></div>
         <div class="security-badge"><span>本地安全模式</span><strong id="securityStatus">检查中</strong></div>
       </div>
       <div class="actions"><button id="openData">数据目录</button><button id="saveSettings" class="primary">保存</button></div>
@@ -57,6 +88,7 @@
       <button data-idle="swing">荡秋千</button><button data-idle="game">玩游戏</button>
       <button data-idle="hover" class="selected">悬浮</button><button data-idle="movie">看电影</button>
       <button data-idle="running">跑步减肥</button>
+      <button data-action="usage">查看用量</button>
     </section>
 
     <section class="pet-chat hidden no-drag" id="petChat" aria-label="问问小鲸鱼">
@@ -71,8 +103,12 @@
       <button class="status-pill" id="statusPill" type="button">问问小鲸鱼</button>
     </section>
 
+    <button class="usage-badge no-drag" id="usageBadge" type="button" title="点击查看用量详情">
+      <span id="usageBadgeMain">额度读取中…</span>
+      <span id="usageBadgeFiveHour" hidden></span>
+    </button>
+
     <nav class="window-actions no-drag">
-      <button id="togglePanel" title="API 余额与账单">余额</button>
       <button id="minimize" title="隐藏到托盘">—</button>
       <button id="quit" title="退出">×</button>
     </nav>

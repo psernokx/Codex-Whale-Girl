@@ -1,5 +1,38 @@
 # Third-party notices / 第三方与素材声明
 
+## Application upstream: DeepSeek-Whale-Girl
+
+This repository is a fork of GarfieldZhung/DeepSeek-Whale-Girl:
+https://github.com/GarfieldZhung/DeepSeek-Whale-Girl
+
+The Electron application, original UI and interactions, DeepSeek integration,
+and original static assets derive from that project. The original program
+license and copyright notice remain in `LICENSE` (Copyright (c) 2026 Whale Girl
+Dashboard contributors). Original static artwork has the separate limitations
+stated below; it is not relicensed by this fork.
+
+## Animation and state-design upstream: dsh-dafeiyu
+
+https://github.com/QCYTSN/dsh-dafeiyu
+
+The frame manifest and animation/state design were adapted from QCYTSN's
+project. Its MIT license (Copyright (c) 2026 QCYTSN) is preserved in
+`assets/dsh-dafeiyu-LICENSE.txt`. This fork uses an Electron player and adds a
+Codex adapter; it does not require the DeepSeek Harness runtime.
+
+## Dynamic whale-maid animation
+
+`assets/dsh-pet/` contains transparent WebP animation frames from
+`QCYTSN/dsh-dafeiyu` (MIT), converted there from the `PC2005-cloud/dsh-pet`
+animation set (Copyright (c) 2026 PC2005-cloud, MIT). The upstream MIT license
+is included verbatim at `assets/dsh-pet-LICENSE.txt`. The animation player in
+this application is an independent Electron implementation. The archived
+`legacy/dafeiyu/` frames in that repository have a separate restricted notice
+and are not included here.
+
+- https://github.com/QCYTSN/dsh-dafeiyu
+- https://github.com/PC2005-cloud/dsh-pet
+
 ## User-supplied whale-maid image
 
 The base character file at `assets/whale/whale-maid.png` was supplied by the

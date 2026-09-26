@@ -3,17 +3,12 @@ import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
-const modes = ['hover', 'swing', 'game', 'movie', 'running']
-
-test('V1.5 animation archive keeps every 24-frame loop intact', async () => {
-  for (const mode of modes) {
-    const files = await readdir(path.join('archive', 'v1.5-animation-assets', 'sequences', mode))
-    const originals = files.filter((name) => /^frame-\d{2}\.png$/.test(name)).sort()
-    const inbetweens = files.filter((name) => /^inbetween-\d{2}\.png$/.test(name)).sort()
-    assert.equal(originals.length, 12, `${mode} original frames`)
-    assert.equal(inbetweens.length, 12, `${mode} in-between frames`)
-    const loop = originals.flatMap((frame, index) => [frame, inbetweens[index]])
-    assert.equal(loop.length, 24)
+test('every packaged animation frame referenced by the manifest exists', async () => {
+  const manifest = JSON.parse(await readFile('assets/dsh-pet-manifest.json', 'utf8'))
+  for (const [name, clip] of Object.entries(manifest.clips)) {
+    const files = new Set(await readdir(path.join('assets', 'dsh-pet', name)))
+    assert.ok(clip.frameMs > 0)
+    for (const frame of clip.frames) assert.ok(files.has(path.basename(frame)), `missing frame: ${frame}`)
   }
 })
 

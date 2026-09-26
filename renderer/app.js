@@ -1,4 +1,5 @@
 import { pickDialogue } from './dialogues.js'
+import { createPetAnimator, petStatePoster } from './pet-animation.js'
 
 const api = window.whaleAPI
 const $ = (id) => document.getElementById(id)
@@ -9,6 +10,7 @@ const petLayers = [$('petSprite'), $('petSpriteNext')]
 const petStage = $('petStage')
 const bubble = $('speechBubble')
 const actionWheel = $('actionWheel')
+const petAnimator = createPetAnimator()
 const staticIdleAssets = {
   hover: '../assets/whale/whale-maid.png',
   swing: '../assets/whale/whale-idle-swing.png',
@@ -35,6 +37,7 @@ let suppressClickUntil = 0
 let activePetLayer = 0
 let selectedIdle = localStorage.getItem('whaleIdleMode') || 'hover'
 if (!staticIdleAssets[selectedIdle]) selectedIdle = 'hover'
+let dynamicPetEnabled = localStorage.getItem('whaleDynamicPet') !== 'false'
 let patCount = 0
 let patResetTimer
 let patCooldownUntil = 0
@@ -43,13 +46,129 @@ let idleChatterTimer
 let currentPetState = 'idle'
 let duckAudioContext
 let bubbleVersion = 0
+let codexActivity = { phase: 'idle', threadId: null, activeCount: 0 }
+let petInteractionUntil = 0
+let deepSeekBusy = false
+
+const codexPhaseText = {
+  thinking: '思考中', searching: '查找资料中', editing: '修改文件中',
+  running: '工作中', testing: '测试中', waiting: '等你处理一下',
+  completed: '完成啦', error: '遇到问题了', idle: '休息中',
+}
+
+function applyCodexActivity(activity) {
+  codexActivity = activity
+  const description = codexPhaseText[activity.phase] || '进行中'
+  const taskName = activity.title ? ` · ${activity.title.slice(0, 24)}` : ''
+  $('codexLiveStatus').textContent = activity.phase === 'idle'
+    ? codexPhaseText.idle
+    : `${description}${taskName}${activity.activeCount > 1 ? ` · 另有 ${activity.activeCount - 1} 个任务` : ''}`
+  document.querySelectorAll('.thread-card').forEach((button) => button.classList.toggle('is-active', button.dataset.threadId === activity.threadId && activity.phase !== 'idle'))
+  if (deepSeekBusy || dragging || Date.now() < petInteractionUntil) return
+  const state = activity.phase === 'idle' ? 'idle' : `codex-${activity.phase}`
+  if (currentPetState === state) return
+  if (state === 'idle' && !currentPetState.startsWith('codex-')) return
+  setPetState(state, { message: activity.phase === 'idle' ? undefined : description })
+}
+
+function resumeCodexAfter(delay) {
+  setTimeout(() => { if (Date.now() >= petInteractionUntil) applyCodexActivity(codexActivity) }, delay + 30)
+}
 
 const fmtTokens = (value = 0) => {
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}亿`
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
   return String(Math.round(value))
 }
 const fmtYuan = (value = 0) => `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: value >= 1 ? 2 : 4, maximumFractionDigits: value >= 1 ? 2 : 6 })}`
+const quotaLabel = (minutes) => minutes >= 1440 ? `${Math.round(minutes / 1440)} 天额度` : minutes >= 60 ? `${Math.round(minutes / 60)} 小时额度` : 'Codex 额度'
+let codexUsage = null
+
+function renderCodex(value) {
+  codexUsage = value
+  const windows = [value.primary, value.secondary].filter(Boolean)
+  const total = windows.find((item) => item.windowDurationMins !== 300)
+  const fiveHour = windows.find((item) => item.windowDurationMins === 300)
+  const remaining = (item) => `${Math.max(0, Math.round(100 - item.usedPercent))}%`
+  $('usageBadgeMain').textContent = total ? `总剩余 ${remaining(total)}` : fiveHour ? `5h 剩余 ${remaining(fiveHour)}` : '暂无额度数据'
+  $('usageBadgeFiveHour').hidden = !(total && fiveHour)
+  $('usageBadgeFiveHour').textContent = fiveHour ? `5h 剩余 ${remaining(fiveHour)}` : ''
+  $('usageBadge').classList.remove('is-stale')
+  $('usageBadge').title = `点击查看详情 · ${new Date(value.fetchedAt).toLocaleTimeString()} 更新`
+  const primary = value.primary || value.secondary
+  if (primary) {
+    const remaining = Math.max(0, Math.round(100 - primary.usedPercent))
+    $('codexWindowLabel').textContent = quotaLabel(primary.windowDurationMins)
+    $('codexRemaining').textContent = `${remaining}% 剩余`
+    $('codexMeterFill').style.width = `${remaining}%`
+    $('codexReset').textContent = primary.resetsAt ? new Date(primary.resetsAt * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
+  } else {
+    $('codexRemaining').textContent = '暂无额度数据'
+    $('codexMeterFill').style.width = '0%'
+  }
+  const other = value.primary && value.secondary ? value.secondary : null
+  $('codexOtherRow').hidden = !other
+  if (other) {
+    $('codexOtherLabel').textContent = quotaLabel(other.windowDurationMins)
+    $('codexOtherRemaining').textContent = `${Math.max(0, Math.round(100 - other.usedPercent))}% 剩余`
+  }
+  const latestDay = value.dailyUsage.at(-1)
+  $('codexTodayTokens').textContent = latestDay ? fmtTokens(latestDay.tokens) : '—'
+  $('codexLifetimeTokens').textContent = value.lifetimeTokens == null ? '—' : fmtTokens(value.lifetimeTokens)
+  $('codexStreak').textContent = value.currentStreakDays == null ? '—' : `${value.currentStreakDays} 天`
+  $('codexStatus').textContent = `由 Codex 提供 · 更新于 ${new Date(value.fetchedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+async function refreshCodexUsage(force = false) {
+  $('codexStatus').textContent = '正在读取 Codex 用量…'
+  $('refreshCodex').disabled = true
+  try {
+    renderCodex(await api.getCodexUsage(force))
+  } catch (error) {
+    $('codexStatus').textContent = error.message || 'Codex 用量暂时不可用'
+    $('usageBadge').classList.add('is-stale')
+    $('usageBadge').title = codexUsage ? '刷新失败，显示上次额度 · 点击重试' : '点击查看连接说明并重试'
+    if (!codexUsage) $('usageBadgeMain').textContent = '额度暂不可用'
+    if (!codexUsage) $('codexRemaining').textContent = '暂不可用'
+  } finally {
+    $('refreshCodex').disabled = false
+  }
+}
+
+function renderCodexThreads(threads) {
+  const list = $('codexThreadList')
+  list.replaceChildren()
+  if (!threads.length) {
+    list.textContent = '还没有找到本机 Codex 对话'
+    return
+  }
+  for (const thread of threads.slice(0, 3)) {
+    const button = document.createElement('button')
+    button.className = 'thread-card'
+    button.dataset.threadId = thread.id
+    button.classList.toggle('is-active', thread.id === codexActivity.threadId && codexActivity.phase !== 'idle')
+    button.type = 'button'
+    button.title = '在 Codex 中打开这条对话'
+    const title = document.createElement('strong')
+    title.textContent = thread.title
+    const preview = document.createElement('span')
+    preview.textContent = thread.preview || '暂无消息预览'
+    const updated = document.createElement('small')
+    updated.textContent = thread.updatedAt ? `${new Date(thread.updatedAt * 1000).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 更新 · 点击打开` : '点击在 Codex 中打开'
+    button.append(title, preview, updated)
+    button.addEventListener('click', () => { void api.openCodexThread(thread.id).catch((error) => { $('codexThreadList').textContent = error.message || '打开对话失败' }) })
+    list.append(button)
+  }
+}
+
+async function refreshCodexThreads(force = false) {
+  $('codexThreadList').textContent = '正在读取对话…'
+  $('refreshCodexThreads').disabled = true
+  try { renderCodexThreads(await api.getCodexThreads(force)) }
+  catch (error) { $('codexThreadList').textContent = error.message || 'Codex 对话暂时不可用' }
+  finally { $('refreshCodexThreads').disabled = false }
+}
 
 function playDuckSqueak() {
   const AudioContext = window.AudioContext || window.webkitAudioContext
@@ -81,6 +200,7 @@ async function askQuestion() {
   if (!question) return setPetState('error', { message: '先写下想问的问题呀～' })
   const button = $('askWhale')
   button.disabled = true
+  deepSeekBusy = true
   setPetChat(false)
   let index = 0
   $('chatStatus').textContent = thinkingLines[index]
@@ -101,8 +221,23 @@ async function askQuestion() {
   } finally {
     clearInterval(chatter)
     button.disabled = false
+    deepSeekBusy = false
+    applyCodexActivity(codexActivity)
   }
 }
+
+function updateBubbleAnchor() {
+  const petRect = petStage.getBoundingClientRect()
+  const headX = petRect.left + petRect.width / 2
+  const width = bubble.offsetWidth
+  const left = Math.max(12, Math.min(headX - width * 0.4, innerWidth - width - 24))
+  bubble.style.right = `${innerWidth - left - width}px`
+  const tailX = Math.max(14, Math.min(width - 30, headX - left - 2))
+  bubble.style.setProperty('--tail-left', `${tailX}px`)
+}
+
+new ResizeObserver(updateBubbleAnchor).observe(bubble)
+window.addEventListener('resize', updateBubbleAnchor)
 
 function speak(text, persistent = false) {
   const version = ++bubbleVersion
@@ -113,6 +248,7 @@ function speak(text, persistent = false) {
   bubble.classList.toggle('is-short', content.length <= 28 && !content.includes('\n'))
   bubble.classList.toggle('is-long', content.length > 120 || content.split('\n').length > 4)
   void bubble.offsetWidth
+  updateBubbleAnchor()
   if (!persistent) bubble.classList.add('pop')
   requestAnimationFrame(() => {
     if (version !== bubbleVersion || bubble.classList.contains('is-panel-hidden')) return
@@ -139,8 +275,14 @@ function transitionPet(state, assetOverride = null, extraClass = '') {
   const previous = petLayers[activePetLayer]
   const nextIndex = 1 - activePetLayer
   const next = petLayers[nextIndex]
-  next.src = assetOverride || (state === 'idle' ? staticIdleAssets[selectedIdle] : (petAssets[state] || petAssets.idle))
-  next.className = `pet-image state-${state}${state === 'idle' ? ` idle-${selectedIdle} idle-float` : ''}${extraClass ? ` ${extraClass}` : ''}`
+  if (assetOverride) petAnimator.stop()
+  const dynamic = !assetOverride && petAnimator.start(next, state, selectedIdle, dynamicPetEnabled)
+  const statusPoster = state.startsWith('codex-') ? petStatePoster(state) : null
+  const fallbackState = state.startsWith('codex-')
+    ? ({ waiting: 'busy', completed: 'success', error: 'error' }[state.slice(6)] || 'working')
+    : state
+  if (!dynamic) next.src = assetOverride || statusPoster || (state === 'idle' ? staticIdleAssets[selectedIdle] : (petAssets[fallbackState] || petAssets.idle))
+  next.className = `pet-image state-${state}${dynamic || statusPoster ? ' dynamic-pet' : ''}${state === 'idle' && !dynamic ? ` idle-${selectedIdle} idle-float` : ''}${extraClass ? ` ${extraClass}` : ''}`
   void next.offsetWidth
   previous.classList.remove('is-visible')
   next.classList.add('is-visible')
@@ -149,6 +291,7 @@ function transitionPet(state, assetOverride = null, extraClass = '') {
   }, 260)
   activePetLayer = nextIndex
   petStage.className = `pet-stage state-${state} idle-${selectedIdle}${dragging ? ' is-long-pressing' : ''}`
+  bubble.classList.toggle('is-working', ['codex-running', 'codex-editing', 'codex-testing'].includes(state))
   if (state === 'idle') scheduleIdleChatter()
 }
 
@@ -159,13 +302,15 @@ function changeIdleMode(mode) {
   actionWheel.classList.add('hidden')
   actionWheel.querySelectorAll('[data-idle]').forEach((button) => button.classList.toggle('selected', button.dataset.idle === selectedIdle))
   speak(pickDialogue(mode === 'hover' ? 'idle' : mode))
+  petInteractionUntil = Date.now() + 10000
   setPetState('idle')
+  resumeCodexAfter(10000)
 }
 
 function setPetState(state, detail = {}) {
   const version = ++stateVersion
   transitionPet(state)
-  const label = { idle: '问问小鲸鱼', working: '小鲸鱼思考中…', dragging: '放我下来！', headpat: '小鲸鱼蹭蹭', bite: '摸头冷却中', busy: '小鲸鱼忙不过来啦', success: '小鲸鱼吃饱啦', chat: '继续问小鲸鱼', error: '小鲸鱼出错了' }[state] || state
+  const label = { idle: '问问小鲸鱼', working: '小鲸鱼思考中…', dragging: '放我下来！', headpat: '小鲸鱼蹭蹭', bite: '摸头冷却中', busy: '小鲸鱼忙不过来啦', success: '小鲸鱼吃饱啦', chat: '继续问小鲸鱼', error: '小鲸鱼出错了' }[state] || (state.startsWith('codex-') ? '问问小鲸鱼' : state)
   $('statusPill').textContent = label
   if (state === 'working') {
     speak(detail.message || pickDialogue('working'), true)
@@ -189,10 +334,20 @@ function setPetState(state, detail = {}) {
     speak(detail.message || '回答送到啦～', true)
   } else if (state === 'error') {
     speak(detail.message || pickDialogue('error'))
+  } else if (state.startsWith('codex-')) {
+    speak(detail.message || codexPhaseText[state.slice(6)] || '进行中', state !== 'codex-completed' && state !== 'codex-error')
   }
   const resumeState = detail.resumeState || 'idle'
-  const duration = state === 'busy' ? 3800 : state === 'success' ? 10000 : state === 'headpat' ? 2200 : state === 'bite' ? 4200 : state === 'error' ? 3000 : 0
-  if (duration) setTimeout(() => { if (version === stateVersion) setPetState(resumeState) }, duration)
+  const duration = state === 'busy' ? 3800 : state === 'success' ? 10000 : state === 'headpat' ? 2200 : state === 'bite' ? 4200 : state === 'error' ? 3000 : state === 'codex-completed' || state === 'codex-error' ? 7000 : 0
+  if (['headpat', 'bite', 'busy', 'success', 'error', 'chat'].includes(state)) {
+    petInteractionUntil = Date.now() + (duration || 10000)
+    resumeCodexAfter(duration || 10000)
+  }
+  if (duration) setTimeout(() => {
+    if (version !== stateVersion) return
+    setPetState(resumeState)
+    applyCodexActivity(codexActivity)
+  }, duration)
 }
 
 function render(snapshot) {
@@ -207,21 +362,24 @@ function render(snapshot) {
   $('outputTokens').textContent = fmtTokens(today.output)
   $('balance').textContent = snapshot.balance ? fmtYuan(snapshot.balance.total) : '未连接'
   $('settingsBalance').textContent = snapshot.balance ? fmtYuan(snapshot.balance.total) : '未连接'
-  $('togglePanel').textContent = snapshot.balance ? fmtYuan(snapshot.balance.total) : '余额'
 }
 
 async function load() {
   render(await api.getSnapshot())
   const config = await api.getConfig()
   $('alwaysOnTop').checked = config.alwaysOnTop
+  $('dynamicPet').checked = dynamicPetEnabled
   $('securityStatus').textContent = config.encryptionAvailable ? '系统加密已启用' : '系统加密不可用'
   $('securityStatus').classList.toggle('warning', !config.encryptionAvailable)
   actionWheel.querySelectorAll('[data-idle]').forEach((button) => button.classList.toggle('selected', button.dataset.idle === selectedIdle))
   setPetState('idle')
+  void refreshCodexUsage()
 }
 
 function setPanel(panel = null) {
+  $('usageBadge').hidden = Boolean(panel)
   dashboard.classList.toggle('hidden', panel !== 'dashboard')
+  if (panel === 'dashboard') void refreshCodexUsage()
   settings.classList.toggle('hidden', panel !== 'settings')
   petChat.classList.add('hidden')
   bubble.classList.toggle('is-panel-hidden', Boolean(panel))
@@ -230,7 +388,24 @@ function setPanel(panel = null) {
   api.setPanelOpen(Boolean(panel))
 }
 
+function setUsageTab(tab) {
+  const codexSelected = tab === 'codex'
+  const deepSeekSelected = tab === 'deepseek'
+  $('codexView').hidden = !codexSelected
+  $('deepSeekView').hidden = !deepSeekSelected
+  $('codexThreadsView').hidden = tab !== 'threads'
+  $('showCodexTab').classList.toggle('selected', codexSelected)
+  $('showDeepSeekTab').classList.toggle('selected', deepSeekSelected)
+  $('showThreadsTab').classList.toggle('selected', tab === 'threads')
+  $('showCodexTab').setAttribute('aria-pressed', String(codexSelected))
+  $('showDeepSeekTab').setAttribute('aria-pressed', String(deepSeekSelected))
+  $('showThreadsTab').setAttribute('aria-pressed', String(tab === 'threads'))
+  if (codexSelected) void refreshCodexUsage()
+  if (tab === 'threads') void refreshCodexThreads()
+}
+
 function setPetChat(open) {
+  $('usageBadge').hidden = false
   petChat.classList.toggle('hidden', !open)
   dashboard.classList.add('hidden')
   settings.classList.add('hidden')
@@ -244,7 +419,16 @@ function setPetChat(open) {
   }
 }
 
-$('togglePanel').addEventListener('click', () => setPanel(dashboard.classList.contains('hidden') ? 'dashboard' : null))
+$('showCodexTab').addEventListener('click', () => setUsageTab('codex'))
+$('showDeepSeekTab').addEventListener('click', () => setUsageTab('deepseek'))
+$('showThreadsTab').addEventListener('click', () => setUsageTab('threads'))
+$('refreshCodexThreads').addEventListener('click', () => { void refreshCodexThreads(true) })
+$('dynamicPet').addEventListener('change', (event) => {
+  dynamicPetEnabled = event.target.checked
+  localStorage.setItem('whaleDynamicPet', String(dynamicPetEnabled))
+  transitionPet(currentPetState)
+})
+$('openDeepSeekChat').addEventListener('click', () => setPetChat(true))
 petStage.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return
   if (event.target.closest('#statusPill')) return
@@ -264,6 +448,7 @@ const finishLongPress = async () => {
   petStage.classList.remove('is-long-pressing')
   await api.endDrag()
   setPetState('idle')
+  applyCodexActivity(codexActivity)
 }
 petStage.addEventListener('pointerup', finishLongPress)
 petStage.addEventListener('pointercancel', finishLongPress)
@@ -296,6 +481,11 @@ petStage.addEventListener('contextmenu', (event) => { event.preventDefault(); se
 $('statusPill').addEventListener('click', (event) => { event.stopPropagation(); setPetChat(true) })
 $('statusPill').addEventListener('dblclick', (event) => event.stopPropagation())
 actionWheel.addEventListener('click', (event) => {
+  if (event.target.closest('[data-action="usage"]')) {
+    setUsageTab('codex')
+    setPanel('dashboard')
+    return
+  }
   const button = event.target.closest('[data-idle]')
   if (button) changeIdleMode(button.dataset.idle)
 })
@@ -308,6 +498,7 @@ $('chatQuestion').addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); askQuestion() }
 })
 $('refreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
+$('refreshCodex').addEventListener('click', () => { void refreshCodexUsage(true) })
 $('settingsRefreshBalance').addEventListener('click', async () => { try { await api.refreshBalance() } catch (error) { setPetState('error', { message: error.message }) } })
 $('saveSettings').addEventListener('click', async () => {
   const apiKey = $('apiKey').value
@@ -325,4 +516,13 @@ $('quit').addEventListener('click', () => api.quit())
 
 api.onSnapshot(render)
 api.onPetState((detail) => setPetState(detail.state, detail))
+api.onCodexActivity(applyCodexActivity)
+$('usageBadge').addEventListener('click', () => {
+  setUsageTab('codex')
+  setPanel('dashboard')
+})
+setInterval(() => {
+  void refreshCodexUsage(true)
+  if (!dashboard.classList.contains('hidden') && !$('codexThreadsView').hidden) void refreshCodexThreads(true)
+}, 5 * 60 * 1000)
 load().catch((error) => setPetState('error', { message: error.message }))
