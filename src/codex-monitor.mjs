@@ -2,6 +2,8 @@ import { open, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { readCodexLocalIndex, defaultCodexHome } from './codex-local-index.mjs'
 
+import { reduceTokenSpeed, tokenSpeedSnapshot } from './token-speed.mjs'
+
 import { isCodexRunning } from './codex-process.mjs'
 
 const fileStates = new Map()
@@ -75,13 +77,17 @@ async function readRollout(filePath, home) {
   cached.pending = lines.pop() || ''
   for (const line of lines) {
     if (!line) continue
-    try { cached.state = reduceCodexEvent(cached.state, JSON.parse(line)) } catch {}
+    try {
+      const entry = JSON.parse(line)
+      const tokenSpeedState = reduceTokenSpeed(cached.state.tokenSpeedState, entry)
+      cached.state = { ...reduceCodexEvent(cached.state, entry), tokenSpeedState }
+    } catch {}
   }
   return cached.state
 }
 
 export async function readCodexActivity(fallbackThreads = [], now = Date.now(), { home = defaultCodexHome(), isRunning = isCodexRunning } = {}) {
-  if (!await isRunning()) return { phase: 'idle', threadId: null, title: null, activeCount: 0, goalCount: 0 }
+  if (!await isRunning()) return { phase: 'idle', threadId: null, title: null, activeCount: 0, goalCount: 0, tokenSpeed: tokenSpeedSnapshot(null, now, { running: false }) }
   const local = await readCodexLocalIndex(home)
   const index = new Map(fallbackThreads.map((thread) => [thread.id, local.available ? { ...thread, goalStatus: null, goalUpdatedAt: 0 } : thread]))
   // Local database paths supersede stale paths returned by the app server.
@@ -100,7 +106,7 @@ export async function readCodexActivity(fallbackThreads = [], now = Date.now(), 
   const goals = entries.filter((entry) => entry.goalStatus === 'active')
   const activeCount = new Set([...active, ...goals].map((entry) => entry.threadId)).size
   const result = (entry, overrides = {}) => ({ phase: entry.phase, threadId: entry.threadId, title: entry.title,
-    project: entry.project || '', activeCount, goalCount: goals.length, goalStatus: entry.goalStatus || null, ...overrides })
+    project: entry.project || '', activeCount, goalCount: goals.length, goalStatus: entry.goalStatus || null, tokenSpeed: tokenSpeedSnapshot(entry.tokenSpeedState, now), ...overrides })
   if (active.length) return result(active[0])
   if (goals.length) {
     goals.sort((a, b) => b.goalUpdatedAt - a.goalUpdatedAt)
@@ -111,5 +117,6 @@ export async function readCodexActivity(fallbackThreads = [], now = Date.now(), 
   if (waiting.length) return result(waiting[0], { phase: 'waiting', description: waiting[0].goalStatus === 'paused' ? '目标已暂停' : waiting[0].goalStatus === 'blocked' ? '目标需要处理' : '等待额度恢复' })
   const recent = entries.filter((entry) => ['completed', 'error'].includes(entry.phase) && now - entry.updatedAt < 8000).sort((a, b) => b.updatedAt - a.updatedAt)
   if (recent.length) return result(recent[0])
-  return { phase: 'idle', threadId: null, title: null, activeCount: 0, goalCount: 0 }
+  const latest = entries.filter(e => e.tokenSpeedState?.sample).sort((a,b) => b.tokenSpeedState.sample.measuredAt - a.tokenSpeedState.sample.measuredAt)[0]
+  return { phase: 'idle', threadId: null, title: null, activeCount: 0, goalCount: 0, tokenSpeed: tokenSpeedSnapshot(latest?.tokenSpeedState, now) }
 }

@@ -30,10 +30,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: npm run assets:fetch
       - run: npm ci
       - run: npm test
       - if: matrix.target == 'linux'
-        run: xvfb-run -a npm run smoke:animation -- --no-sandbox
+        run: xvfb-run -a npm run smoke:animation -- --token-speed-smoke-test --no-sandbox
       - run: npm run prepublish:check
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run dist:${{ matrix.target }}

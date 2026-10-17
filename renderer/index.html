@@ -31,6 +31,12 @@
       <div class="codex-meter"><div id="codexMeterFill"></div></div>
       <div class="token-row"><span>下次重置</span><b id="codexReset">—</b></div>
       <div class="token-row" id="codexOtherRow" hidden><span id="codexOtherLabel">另一额度</span><b id="codexOtherRemaining">—</b></div>
+      <div class="stats-grid token-speed-grid" aria-label="Token 速率估算">
+        <article><span>输入吞吐</span><strong id="inputTokenRate">—</strong><small>tok/s · 含缓存</small></article>
+        <article><span>输出速率</span><strong id="outputTokenRate">—</strong><small>tok/s · 含推理</small></article>
+      </div>
+      <p class="codex-note" id="tokenSpeedStatus">等待用量记录</p>
+      <p class="codex-note token-speed-details" id="tokenSpeedDetails">日志按响应更新，速率为区间估算。</p>
       <div class="stats-grid codex-stats">
         <article><span>最近一天 Token</span><strong id="codexTodayTokens">—</strong></article>
         <article><span>累计 Token</span><strong id="codexLifetimeTokens">—</strong></article>
@@ -96,9 +102,14 @@
 
     <section class="extra-action-menu hidden no-drag" id="extraActions" aria-label="更多动作">
       <header>更多动作 <button id="closeExtraActions" type="button" aria-label="收起更多动作">×</button></header>
-      <button data-idle="swing">荡秋千</button><button data-idle="rubik">玩魔方</button>
-      <button data-idle="cat">撸猫</button><button data-idle="stretch">伸懒腰</button>
-      <button data-idle="dance">跳舞</button><button data-idle="snack">吃零食</button>
+      <div class="extra-action-featured">
+        <button data-idle="swing">荡秋千</button><button data-idle="rubik">玩魔方</button>
+        <button data-idle="cat">撸猫</button><button data-idle="stretch">伸懒腰</button>
+        <button data-idle="dance">跳舞</button><button data-idle="snack">吃零食</button>
+      </div>
+      <div class="action-library-filters"><input id="actionSearch" type="search" placeholder="搜索 106 个动作" aria-label="搜索动作" />
+        <select id="actionCategory" aria-label="动作分类"><option value="">全部分类</option></select></div>
+      <div class="action-library-list" id="actionLibraryList" aria-live="polite"></div>
     </section>
 
     <section class="pet-chat hidden no-drag" id="petChat" aria-label="问问小鲸鱼">
@@ -117,6 +128,10 @@
     <button class="usage-badge no-drag" id="usageBadge" type="button" title="点击查看用量详情">
       <span id="usageBadgeMain">额度读取中…</span>
       <span id="usageBadgeFiveHour" hidden></span>
+      <span class="usage-speed" id="usageSpeed" aria-label="Token 速率估算">
+        <span>输入 <b id="usageInputRate">—</b> tok/s</span>
+        <span>输出 <b id="usageOutputRate">—</b> tok/s</span>
+      </span>
     </button>
 
     <nav class="window-actions no-drag">

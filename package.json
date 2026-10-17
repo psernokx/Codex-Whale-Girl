@@ -1,6 +1,6 @@
 {
   "name": "whale-girl-dashboard",
-  "version": "1.9.9",
+  "version": "1.11.0",
   "description": "Cross-platform whale desktop companion with Codex activity and usage plus DeepSeek chat and balance.",
   "main": "electron/main.cjs",
   "type": "module",
@@ -17,7 +17,9 @@
     "smoke:animation": "electron . --animation-smoke-test",
     "dist:win": "electron-builder --win nsis --x64 --publish never",
     "dist:mac": "electron-builder --mac dmg zip --universal --publish never",
-    "dist:linux": "electron-builder --linux AppImage tar.gz --x64 --publish never"
+    "dist:linux": "electron-builder --linux AppImage tar.gz --x64 --publish never",
+    "assets:fetch": "node scripts/fetch-enhanced-assets.mjs",
+    "assets:check": "node scripts/fetch-enhanced-assets.mjs --check"
   },
   "devDependencies": {
     "electron": "^43.4.1",

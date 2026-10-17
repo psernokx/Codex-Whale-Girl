@@ -37,3 +37,9 @@ tools-local/
 # Offline interpolation environment
 .venv-interpolation/
 __pycache__/
+
+# Enhanced binaries are pinned in assets/enhanced-assets.lock.json and GitHub Release packs
+assets/dsh-pet-4x60/
+assets/pet-runtime/
+assets/action-library/**/animation.webm
+assets/action-library/**/poster.png

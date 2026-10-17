@@ -103,3 +103,29 @@ test('closing Codex hides unfinished goals and stale turns; reopening restores m
     assert.equal((await readCodexActivity([], now, options)).phase, 'goal')
   } finally { await f.close() }
 })
+
+test('throughput follows the selected active thread, updates incrementally, expires, and clears on exit/truncation', async () => {
+  const f=await fixture()
+  try {
+    const now=Date.now(), start=now-10000
+    const log=path.join(f.home,'sessions','rate.jsonl'), other=path.join(f.home,'sessions','other-rate.jsonl')
+    const usage=(time,input,output,lastInput,lastOutput)=>event(time,{type:'token_count',info:{
+      total_token_usage:{input_tokens:input,output_tokens:output},last_token_usage:{input_tokens:lastInput,output_tokens:lastOutput}}})
+    await writeFile(log,event(start,{type:'task_started'})+event(start+100,{type:'item_completed',item:{type:'CommandExecution',command:'run'}})+usage(now-5000,1000,100,1000,100))
+    await writeFile(other,event(start,{type:'task_started'})+usage(now-4000,6000,6000,6000,6000))
+    const insert=f.state.prepare('INSERT INTO threads VALUES(?,?,?,?,?,?,?,0)')
+    insert.run('rate',log,'','Rate',null,now/1000,now)
+    insert.run('other',other,'','Other',null,now/1000,now)
+    const options={home:f.home,isRunning:async()=>true}
+    const first=await readCodexActivity([],now,options)
+    assert.equal(first.threadId,'rate')
+    assert.equal(first.tokenSpeed.outputRate,20)
+    await appendFile(log,usage(now,1200,130,200,30))
+    assert.equal((await readCodexActivity([],now,options)).tokenSpeed.outputRate,6)
+    assert.equal((await readCodexActivity([],now+46000,options)).tokenSpeed.status,'stale')
+    assert.equal((await readCodexActivity([],now,{...options,isRunning:async()=>false})).tokenSpeed.status,'offline')
+    await writeFile(log,usage(now+100,10,1,10,1))
+    f.state.exec("DELETE FROM threads WHERE id='other'")
+    assert.equal((await readCodexActivity([],now+100,options)).tokenSpeed.outputRate,null)
+  }finally{await f.close()}
+})

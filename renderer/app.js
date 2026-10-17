@@ -1,5 +1,5 @@
 import { pickDialogue } from './dialogues.js'
-import { createPetAnimator, petStatePoster } from './pet-animation.js'
+import { createPetAnimator, petStatePoster, petStateDuration } from './pet-animation.js'
 
 const api = window.whaleAPI
 const $ = (id) => document.getElementById(id)
@@ -12,16 +12,23 @@ const bubble = $('speechBubble')
 const actionWheel = $('actionWheel')
 const extraActions = $('extraActions')
 const petVideo = $('petVideo')
+const actionLibrary = await fetch(new URL('../assets/action-library/actions.json', import.meta.url))
+  .then(response => response.ok ? response.json() : { actions: [] }).catch(() => ({ actions: [] }))
+const libraryActions = actionLibrary.actions.filter(action => action.status === 'completed')
+const libraryById = new Map(libraryActions.map(action => [action.id, action]))
 const extraIdleModes = ['swing', 'rubik', 'cat', 'stretch', 'dance', 'snack']
+const featuredActions = new Map(libraryActions.filter(action => action.featuredMode).map(action => [action.featuredMode, action]))
 let videoVersion = 0
-const petAnimator = createPetAnimator()
+let libraryRestoreTimer = null
+const petAnimator = createPetAnimator({ onComplete: completePetInteraction })
 const staticIdleAssets = {
   hover: '../assets/whale/whale-maid.png',
   swing: '../assets/whale/whale-idle-swing.png',
   game: '../assets/whale/whale-idle-game.png',
   movie: '../assets/whale/whale-idle-movie.png',
   running: '../assets/whale/whale-idle-running.png',
-  ...Object.fromEntries(extraIdleModes.map(mode => [mode, `../assets/extra-actions/${mode}.png`])),
+  ...Object.fromEntries(extraIdleModes.map(mode => [mode, featuredActions.has(mode)
+    ? `../assets/action-library/${featuredActions.get(mode).id}/poster.png` : `../assets/extra-actions/${mode}.png`])),
 }
 const petAssets = {
   idle: staticIdleAssets.hover,
@@ -55,6 +62,31 @@ let codexActivity = { phase: 'idle', threadId: null, activeCount: 0 }
 let petInteractionUntil = 0
 let deepSeekBusy = false
 
+function renderActionLibrary() {
+  const search = ($('actionSearch')?.value || '').trim().toLocaleLowerCase()
+  const category = $('actionCategory')?.value || ''
+  const matches = libraryActions.filter(action => {
+    const categories = action.authorCategories || []
+    return (!category || categories.includes(category)) && (!search || `${action.title} ${categories.join(' ')}`.toLocaleLowerCase().includes(search))
+  })
+  $('actionLibraryList')?.replaceChildren(...(matches.length ? matches.map(action => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.libraryAction = action.id
+    button.title = `${action.title} · ${(action.authorCategories || []).join(' / ')}\n${action.authorSummary || ''}`
+    button.textContent = action.title
+    return button
+  }) : [Object.assign(document.createElement('div'), { className: 'action-library-empty', textContent: '没有匹配动作' })]))
+}
+
+if ($('actionCategory')) {
+  const categories = [...new Set(libraryActions.flatMap(action => action.authorCategories || []))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  $('actionCategory').append(...categories.map(category => Object.assign(document.createElement('option'), { value: category, textContent: category })))
+  $('actionSearch').addEventListener('input', renderActionLibrary)
+  $('actionCategory').addEventListener('change', renderActionLibrary)
+  renderActionLibrary()
+}
+
 const codexPhaseText = {
   thinking: '思考中', searching: '查找资料中', editing: '修改文件中',
   running: '工作中', testing: '测试中', waiting: '等你处理一下',
@@ -64,6 +96,7 @@ const codexPhaseText = {
 function applyCodexActivity(activity) {
   const previousDescription = codexActivity.description || codexPhaseText[codexActivity.phase]
   codexActivity = activity
+  renderTokenSpeed(activity.tokenSpeed)
   const description = activity.description || codexPhaseText[activity.phase] || '进行中'
   const taskName = activity.title ? ` · ${activity.project ? `${activity.project} · ` : ''}${activity.title.slice(0, 24)}` : ''
   $('codexLiveStatus').textContent = activity.phase === 'idle'
@@ -90,6 +123,31 @@ const fmtTokens = (value = 0) => {
 const fmtYuan = (value = 0) => `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: value >= 1 ? 2 : 4, maximumFractionDigits: value >= 1 ? 2 : 6 })}`
 const quotaLabel = (minutes) => minutes >= 1440 ? `${Math.round(minutes / 1440)} 天额度` : minutes >= 60 ? `${Math.round(minutes / 60)} 小时额度` : 'Codex 额度'
 let codexUsage = null
+
+function formatTokenRate(value) {
+  if (!Number.isFinite(value) || value < 0) return '—'
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return value.toFixed(1)
+}
+
+function renderTokenSpeed(speed) {
+  const age = speed?.measuredAt ? Date.now() - speed.measuredAt : null
+  const fresh = speed?.status === 'recent' && age >= 0 && age <= 45000
+  const input = formatTokenRate(fresh ? speed.inputRate : null)
+  const output = formatTokenRate(fresh ? speed.outputRate : null)
+  $('usageInputRate').textContent = $('inputTokenRate').textContent = input
+  $('usageOutputRate').textContent = $('outputTokenRate').textContent = output
+  const status = speed?.status === 'offline' ? 'Codex 未运行'
+    : fresh ? `最近响应估算 · ${new Date(speed.measuredAt).toLocaleTimeString()}`
+    : speed?.measuredAt ? '采样已过期，等待下一次用量记录' : '等待用量记录'
+  $('tokenSpeedStatus').textContent = status
+  $('usageSpeed').title = `${status}；输入含缓存、输出含推理。点击查看统计口径。`
+  if (speed?.measuredAt) {
+    const method = {'output-start':'输出片段区间','request':'请求区间（含等待）','interval':'相邻用量记录区间'}[speed.outputMethod] || '日志区间'
+    $('tokenSpeedDetails').textContent = `输入 ${fmtTokens(speed.inputTokens)}（缓存 ${fmtTokens(speed.cachedInputTokens)}）/ ${Number(speed.inputSeconds).toFixed(2)} 秒；输出 ${fmtTokens(speed.outputTokens)}（含推理 ${fmtTokens(speed.reasoningTokens)}）/ ${Number(speed.outputSeconds).toFixed(2)} 秒。输出依据：${method}。输入按整个请求区间估算，不能等同于精确的输入处理速度。日志按响应更新，不是逐 Token 流式测量。`
+  } else $('tokenSpeedDetails').textContent = '从本机 Codex 用量记录计算，按响应更新。输入含缓存，输出含推理；没有记录时不显示估算数字。'
+}
 
 function renderCodex(value) {
   codexUsage = value
@@ -251,8 +309,20 @@ function updateBubbleAnchor() {
   bubble.style.setProperty('--tail-left', `${tailX}px`)
 }
 
-new ResizeObserver(updateBubbleAnchor).observe(bubble)
-window.addEventListener('resize', updateBubbleAnchor)
+let bubbleAnchorFrame = null
+function scheduleBubbleAnchor() {
+  if (bubbleAnchorFrame !== null) return
+  bubbleAnchorFrame = requestAnimationFrame(() => {
+    bubbleAnchorFrame = null
+    updateBubbleAnchor()
+  })
+}
+// Window zoom and badge sizing can move the pet without changing the text width.
+const bubbleLayoutObserver = new ResizeObserver(scheduleBubbleAnchor)
+for (const element of [bubble, petStage, document.documentElement]) bubbleLayoutObserver.observe(element)
+window.addEventListener('resize', scheduleBubbleAnchor)
+window.visualViewport?.addEventListener('resize', scheduleBubbleAnchor)
+
 
 function speak(text, persistent = false) {
   const version = ++bubbleVersion
@@ -285,23 +355,30 @@ function scheduleIdleChatter() {
 }
 
 function transitionPet(state, assetOverride = null, extraClass = '') {
+  clearTimeout(libraryRestoreTimer)
   clearTimeout(idleChatterTimer)
   currentPetState = state
   const previous = petLayers[activePetLayer]
   const nextIndex = 1 - activePetLayer
   const next = petLayers[nextIndex]
   if (assetOverride) petAnimator.stop()
-  const extra = !assetOverride && state === 'idle' && extraIdleModes.includes(selectedIdle) && dynamicPetEnabled && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const extra = !assetOverride && state === 'idle' && extraIdleModes.includes(selectedIdle) && dynamicPetEnabled
   const dynamic = !assetOverride && !extra && petAnimator.start(next, state, selectedIdle, dynamicPetEnabled)
   if (extra) petAnimator.stop()
   const videoToken = ++videoVersion
   petVideo.pause()
   petVideo.onloadeddata = null
+  petVideo.onended = null
+  petVideo.onerror = null
   petVideo.classList.remove('is-visible')
   if (extra) {
+    petVideo.preload = 'auto'
+    petVideo.loop = true
     petVideo.playbackRate = 1
     petVideo.defaultPlaybackRate = 1
-    petVideo.src = `../assets/extra-actions/${selectedIdle}.webm`
+    petVideo.src = featuredActions.has(selectedIdle)
+      ? `../assets/action-library/${featuredActions.get(selectedIdle).id}/animation.webm`
+      : `../assets/extra-actions/${selectedIdle}.webm`
     petVideo.onloadeddata = () => {
       if (videoToken !== videoVersion) return
       petVideo.play().then(() => {
@@ -326,6 +403,7 @@ function transitionPet(state, assetOverride = null, extraClass = '') {
   }, 260)
   activePetLayer = nextIndex
   petStage.className = `pet-stage state-${state} idle-${selectedIdle}${dragging ? ' is-long-pressing' : ''}`
+  petStage.classList.toggle('has-status-video', Boolean($('statusVideo')?.classList.contains('is-visible')))
   bubble.classList.toggle('is-working', ['codex-running', 'codex-editing', 'codex-testing'].includes(state))
   if (state === 'idle') scheduleIdleChatter()
 }
@@ -341,6 +419,71 @@ function changeIdleMode(mode) {
   petInteractionUntil = Date.now() + 10000
   setPetState('idle')
   resumeCodexAfter(10000)
+}
+
+function playLibraryAction(id) {
+  const action = libraryById.get(id)
+  if (!action) return
+  if (!dynamicPetEnabled) {
+    ++stateVersion
+    petInteractionUntil = Date.now() + 10000
+    transitionPet('idle', `../assets/action-library/${action.id}/poster.png`, 'extra-poster')
+    $('statusPill').textContent = action.title
+    speak(action.title)
+    extraActions.classList.add('hidden')
+    libraryRestoreTimer = setTimeout(() => {
+      petInteractionUntil = 0
+      setPetState('idle')
+      applyCodexActivity(codexActivity)
+    }, 10000)
+    return
+  }
+  clearTimeout(idleChatterTimer)
+  clearTimeout(libraryRestoreTimer)
+  const token = ++videoVersion
+  ++stateVersion
+  currentPetState = 'idle'
+  petAnimator.stop()
+  petVideo.pause()
+  petVideo.onloadeddata = null
+  petVideo.onended = null
+  petVideo.loop = false
+  petVideo.preload = 'auto'
+  petVideo.playbackRate = 1
+  petVideo.defaultPlaybackRate = 1
+  petVideo.src = `../assets/action-library/${action.id}/animation.webm`
+  const restore = () => {
+    if (token !== videoVersion) return
+    clearTimeout(libraryRestoreTimer)
+    petVideo.onended = null
+    petVideo.onerror = null
+    petInteractionUntil = 0
+    setPetState('idle')
+    applyCodexActivity(codexActivity)
+  }
+  petVideo.onloadeddata = () => {
+    if (token !== videoVersion) return
+    petVideo.play().then(() => {
+      if (token !== videoVersion) return
+      petLayers.forEach(layer => layer.classList.remove('is-visible'))
+      petVideo.classList.add('is-visible')
+    }).catch(restore)
+  }
+  petVideo.onended = restore
+  petVideo.onerror = restore
+  libraryRestoreTimer = setTimeout(restore, Math.ceil(action.durationSeconds * 1000) + 10000)
+  petVideo.load()
+  petInteractionUntil = Date.now() + Math.ceil(action.durationSeconds * 1000)
+  $('statusPill').textContent = action.title
+  speak(action.title)
+  extraActions.classList.add('hidden')
+}
+
+function completePetInteraction(state) {
+  if (currentPetState !== state || !['headpat', 'bite'].includes(state)) return
+  petInteractionUntil = 0
+  setPetState('idle')
+  applyCodexActivity(codexActivity)
 }
 
 function setPetState(state, detail = {}) {
@@ -374,7 +517,9 @@ function setPetState(state, detail = {}) {
     speak(detail.message || codexPhaseText[state.slice(6)] || '进行中', state !== 'codex-completed' && state !== 'codex-error')
   }
   const resumeState = detail.resumeState || 'idle'
-  const duration = state === 'busy' ? 3800 : state === 'success' ? 10000 : state === 'headpat' ? 2200 : state === 'bite' ? 4200 : state === 'error' ? 3000 : state === 'codex-completed' || state === 'codex-error' ? 7000 : 0
+  // One-shot animations restore work on completion. This timer is only a loading-failure watchdog.
+  const duration = dynamicPetEnabled && ['headpat', 'bite'].includes(state) ? petStateDuration(state) + 10000
+    : state === 'busy' ? 3800 : state === 'success' ? 10000 : state === 'headpat' ? 2200 : state === 'bite' ? 4200 : state === 'error' ? 3000 : state === 'codex-completed' || state === 'codex-error' ? 7000 : 0
   if (['headpat', 'bite', 'busy', 'success', 'error', 'chat'].includes(state)) {
     petInteractionUntil = Date.now() + (duration || 10000)
     resumeCodexAfter(duration || 10000)
@@ -468,6 +613,11 @@ $('refreshCodexThreads').addEventListener('click', () => { void refreshCodexThre
 $('dynamicPet').addEventListener('change', (event) => {
   dynamicPetEnabled = event.target.checked
   localStorage.setItem('whaleDynamicPet', String(dynamicPetEnabled))
+  if (['headpat', 'bite'].includes(currentPetState)) {
+    if (dynamicPetEnabled) setPetState(currentPetState)
+    else completePetInteraction(currentPetState)
+    return
+  }
   transitionPet(currentPetState)
 })
 $('openDeepSeekChat').addEventListener('click', () => setPetChat(true))
@@ -487,6 +637,8 @@ const finishLongPress = async () => {
   clearTimeout(longPressTimer)
   if (!dragging) return
   dragging = false
+  // A click can follow pointerup even after a long drag; suppress it from release time.
+  suppressClickUntil = Date.now() + 500
   petStage.classList.remove('is-long-pressing')
   await api.endDrag()
   setPetState('idle')
@@ -523,6 +675,8 @@ petStage.addEventListener('contextmenu', (event) => { event.preventDefault(); se
 $('statusPill').addEventListener('click', (event) => { event.stopPropagation(); setPetChat(true) })
 $('statusPill').addEventListener('dblclick', (event) => event.stopPropagation())
 extraActions.addEventListener('click', event => {
+  const libraryButton = event.target.closest('[data-library-action]')
+  if (libraryButton) { playLibraryAction(libraryButton.dataset.libraryAction); return }
   const button = event.target.closest('[data-idle]')
   if (button) changeIdleMode(button.dataset.idle)
 })
@@ -533,6 +687,7 @@ document.addEventListener('pointerdown', event => {
 actionWheel.addEventListener('click', (event) => {
   if (event.target.closest('[data-action="more"]')) {
     actionWheel.classList.add('hidden')
+    renderActionLibrary()
     extraActions.classList.remove('hidden')
     return
   }
@@ -588,6 +743,8 @@ api.onDisplayScale(({pet, usage}) => {
 api.onSnapshot(render)
 api.onPetState((detail) => setPetState(detail.state, detail))
 api.onCodexActivity(applyCodexActivity)
+renderTokenSpeed(null)
+setInterval(() => renderTokenSpeed(codexActivity.tokenSpeed), 2000)
 $('usageBadge').addEventListener('click', () => {
   setUsageTab('codex')
   setPanel('dashboard')
@@ -602,4 +759,7 @@ setInterval(() => {
   void refreshCodexUsage(true)
   if (!dashboard.classList.contains('hidden') && !$('codexThreadsView').hidden) void refreshCodexThreads(true)
 }, 5 * 60 * 1000)
-load().catch((error) => setPetState('error', { message: error.message }))
+load().then(async () => {
+  await api.rendererReady()
+  document.documentElement.dataset.ready = 'true'
+}).catch((error) => setPetState('error', { message: error.message }))

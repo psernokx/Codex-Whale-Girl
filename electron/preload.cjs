@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('whaleAPI', {
+  rendererReady: () => ipcRenderer.invoke('whale:renderer-ready'),
   getSnapshot: () => ipcRenderer.invoke('whale:get-snapshot'),
   getCodexUsage: (force = false) => ipcRenderer.invoke('whale:get-codex-usage', force),
   getCodexThreads: (force = false) => ipcRenderer.invoke('whale:get-codex-threads', force),

@@ -38,6 +38,7 @@ let codexThreadsInFlight = null
 let codexActivityTimer = null
 let codexActivityPolling = false
 let lastCodexActivityKey = ''
+let latestCodexActivity = null
 let codexMonitorFailures = 0
 
 const defaultConfig = {
@@ -96,22 +97,27 @@ async function getCodexThreads(force = false) {
   return codexThreadsInFlight
 }
 
+function sendCodexActivity(activity) {
+  latestCodexActivity = activity
+  mainWindow?.webContents.send('whale:codex-activity', activity)
+}
+
 async function publishCodexActivity() {
   if (codexActivityPolling || !mainWindow || mainWindow.isDestroyed()) return
   codexActivityPolling = true
   try {
     const activity = await modules.readCodexActivity(codexThreadsCache || [])
     codexMonitorFailures = 0
-    const key = `${activity.phase}:${activity.threadId}:${activity.activeCount}:${activity.title}:${activity.goalCount}:${activity.description || ''}:${activity.detail || ''}`
+    const key = `${activity.phase}:${activity.threadId}:${activity.activeCount}:${activity.title}:${activity.goalCount}:${activity.description || ''}:${activity.detail || ''}:${activity.tokenSpeed?.status}:${activity.tokenSpeed?.measuredAt}`
     if (key !== lastCodexActivityKey) {
       lastCodexActivityKey = key
-      mainWindow.webContents.send('whale:codex-activity', activity)
+      sendCodexActivity(activity)
     }
   } catch {
     codexMonitorFailures++
     if (codexMonitorFailures >= 3 && lastCodexActivityKey !== 'idle') {
       lastCodexActivityKey = 'idle'
-      mainWindow.webContents.send('whale:codex-activity', { phase: 'idle', threadId: null, title: null, activeCount: 0 })
+      sendCodexActivity({ phase: 'idle', threadId: null, title: null, activeCount: 0 })
     }
   }
   finally { codexActivityPolling = false }
@@ -311,7 +317,7 @@ function applyWindowSize() {
   mainWindow.webContents.setZoomFactor(zoom)
   const target = {
     width: Math.min(area.width, Math.ceil(Math.max(base.width * zoom, 30 + 132 * usageScale + 205 * zoom))),
-    height: Math.min(area.height, Math.ceil(Math.max(base.height * zoom, 110 * usageScale + 24))),
+    height: Math.min(area.height, Math.ceil(Math.max(base.height * zoom, 140 * usageScale + 24))),
   }
   mainWindow.webContents.send('whale:display-scale', { pet: zoom, usage: usageScale })
   if (bounds.width === target.width && bounds.height === target.height) return
@@ -354,6 +360,7 @@ async function createWindow() {
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      backgroundThrottling: false,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -382,7 +389,17 @@ async function createWindow() {
   if (animationSmokeMode) {
     mainWindow.webContents.once('did-finish-load', async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        const systemReducedMotion = await mainWindow.webContents.executeJavaScript("matchMedia('(prefers-reduced-motion: reduce)').matches")
+        console.log('[animation-smoke] system reduced motion:', systemReducedMotion, '; testing explicit animation switch under reduce')
+        mainWindow.webContents.debugger.attach('1.3')
+        await mainWindow.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {features:[{name:'prefers-reduced-motion',value:'reduce'}]})
+        await mainWindow.webContents.executeJavaScript(`new Promise((resolve, reject) => {
+          const deadline = Date.now() + 15000;
+          const timer = setInterval(() => {
+            if (document.getElementById('usageBadge').textContent.includes('总剩余 60%')) { clearInterval(timer); resolve() }
+            else if (Date.now() > deadline) { clearInterval(timer); reject(new Error('Usage UI did not initialize')) }
+          }, 100);
+        })`)
         const badge = await mainWindow.webContents.executeJavaScript(`(() => {
           const badge = document.getElementById('usageBadge')
           const pill = document.getElementById('statusPill').getBoundingClientRect()
@@ -404,11 +421,15 @@ async function createWindow() {
           mainWindow.webContents.send('whale:pet-state', { state: `codex-${phase}` })
           await new Promise((resolve) => setTimeout(resolve, phase === 'running' ? 5300 : 2700))
           const result = await mainWindow.webContents.executeJavaScript(`(() => {
-            const img = document.querySelector('.pet-image.is-visible')
-            return { src: img.getAttribute('src'), loaded: img.complete && img.naturalWidth > 0,
+            const img = document.querySelector('#statusVideo.is-visible') || document.querySelector('img.pet-image.is-visible')
+            return { src: img.getAttribute('src'), loaded: img.tagName === 'VIDEO' ? img.readyState >= 2 : img.complete && img.naturalWidth > 0,
+              position: img.tagName === 'VIDEO' ? img.currentTime : img.getAttribute('src'),
               text: document.getElementById('bubbleText').textContent }
           })()`)
-          if (!result.loaded || !result.src.includes('/' + clip + '/') || result.text !== text) throw new Error(JSON.stringify(result))
+          if (!result.loaded || !(result.src.includes('/' + clip + '/') || result.src.endsWith('/' + clip + '.webm')) || result.text !== text) throw new Error(JSON.stringify(result))
+          await new Promise(resolve=>setTimeout(resolve,180))
+          const laterFrame = await mainWindow.webContents.executeJavaScript("document.querySelector('#statusVideo.is-visible')?.currentTime ?? document.querySelector('img.pet-image.is-visible').getAttribute('src')")
+          if(laterFrame === result.position) throw new Error('Animation stayed on one frame: '+phase+' '+laterFrame)
           await fs.writeFile(path.join(artifactDir, `animation-${phase}.png`), (await mainWindow.webContents.capturePage()).toPNG())
           console.log('[animation-smoke]', phase, result.src, result.text)
         }
@@ -476,32 +497,81 @@ async function createWindow() {
             const badge = document.getElementById('usageBadge').getBoundingClientRect()
             const pet = document.getElementById('petStage').getBoundingClientRect()
             const pill = document.getElementById('statusPill').getBoundingClientRect()
-            return {badge:badge.width, pet:pet.width, left:badge.left, right:badge.right, pillLeft:pill.left}
+            const bubble=document.getElementById('speechBubble')
+            return {badge:badge.width, pet:pet.width, left:badge.left, right:badge.right, pillLeft:pill.left,top:badge.top,bottom:badge.bottom,height:innerHeight,
+              tip:bubble.offsetLeft+2+parseFloat(getComputedStyle(bubble).getPropertyValue('--tail-left')), head:pet.left+pet.width/2}
           })()`)
           if (Math.abs(metrics.badge * pet - 132 * usage) > 2 || Math.abs(metrics.pet * pet - 292 * pet) > 2) throw new Error('Independent sizes failed: ' + JSON.stringify(metrics))
+          if (Math.abs(metrics.tip-metrics.head)>3) throw new Error('Bubble moved away after independent resize: '+JSON.stringify(metrics))
+          if(metrics.top<0||metrics.bottom>metrics.height) throw new Error('Badge outside window: '+JSON.stringify(metrics))
           if (metrics.left < 0 || metrics.right > metrics.pillLeft) throw new Error('Independent sizes overlap')
           if ((await readConfig()).usageScale !== usage) throw new Error('Usage size not persisted')
         }
 
+        const actionCatalog = JSON.parse(await fs.readFile(path.join(projectRoot, 'assets/action-library/actions.json'), 'utf8')).actions
         for (const mode of ['swing', 'rubik', 'cat', 'stretch', 'dance', 'snack']) {
+          await mainWindow.webContents.executeJavaScript(`window.__animationErrors=[]; window.addEventListener('error',event=>window.__animationErrors.push(event.message),{once:true})`)
           await mainWindow.webContents.executeJavaScript(`document.querySelector('#extraActions [data-idle="${mode}"]').click()`)
+          console.log('[animation-smoke] extra-start', mode, await mainWindow.webContents.executeJavaScript(`({src:document.getElementById('petVideo').src,state:document.getElementById('petStage').className,dynamic:document.getElementById('dynamicPet').checked,errors:window.__animationErrors})`))
           const result = await mainWindow.webContents.executeJavaScript(`new Promise((resolve,reject) => {
             const video=document.getElementById('petVideo');const deadline=Date.now()+6000;
             const timer=setInterval(()=>{
               if(video.readyState>=2 && video.currentTime>0.12 && video.classList.contains('is-visible')) {
                 clearInterval(timer);const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
                 const ctx=canvas.getContext('2d');ctx.drawImage(video,0,0);resolve({width:video.videoWidth,alpha:ctx.getImageData(0,0,1,1).data[3],src:video.getAttribute('src')});
-              } else if(Date.now()>deadline){clearInterval(timer);reject(new Error('Extra animation did not play'))}
+              } else if(Date.now()>deadline){clearInterval(timer);reject(new Error('Extra animation did not play: '+JSON.stringify({mode:'${mode}',src:video.src,ready:video.readyState,time:video.currentTime,paused:video.paused,error:video.error?.message,visible:video.classList.contains('is-visible')})))}
             },50);
           })`)
           // VP9 alpha compression can leave a 1/255 residual at transparent corners.
-          if(result.width!==640 || result.alpha>3 || !result.src.endsWith(mode+'.webm')) throw new Error('Extra action failed: '+JSON.stringify(result))
+          const enhanced = actionCatalog.find(action=>action.featuredMode===mode && action.status==='completed')
+          const expectedSource = enhanced ? '/action-library/'+enhanced.id+'/animation.webm' : '/extra-actions/'+mode+'.webm'
+          if(result.width!==(enhanced ? enhanced.width : 640) || result.alpha>3 || !result.src.endsWith(expectedSource)) throw new Error('Extra action failed: '+JSON.stringify(result))
         }
         await fs.writeFile(path.join(artifactDir, 'extra-action-snack.png'), (await mainWindow.webContents.capturePage()).toPNG())
         mainWindow.webContents.send('whale:pet-state', {state:'codex-running'})
         await new Promise(resolve=>setTimeout(resolve,250))
         if(await mainWindow.webContents.executeJavaScript("document.getElementById('petVideo').classList.contains('is-visible')")) throw new Error('Extra video covered work state')
         await mainWindow.webContents.executeJavaScript("document.querySelector('#actionWheel [data-idle=hover]').click()")
+
+        const libraryBounds = await mainWindow.webContents.executeJavaScript(`(() => {
+          document.querySelector('#actionWheel [data-action="more"]').click();
+          const rect=document.getElementById('extraActions').getBoundingClientRect();
+          return {top:rect.top,left:rect.left,bottom:rect.bottom,right:rect.right,menuWidth:rect.width,menuHeight:rect.height,width:innerWidth,height:innerHeight};
+        })()`)
+        if(libraryBounds.menuWidth<100 || libraryBounds.menuHeight<100 || libraryBounds.top<0 || libraryBounds.left<0 || libraryBounds.bottom>libraryBounds.height || libraryBounds.right>libraryBounds.width) throw new Error('Action library hidden or outside window: '+JSON.stringify(libraryBounds))
+        await new Promise(resolve=>setTimeout(resolve,200))
+        await mainWindow.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+        await fs.writeFile(path.join(artifactDir, 'action-library.png'), (await mainWindow.webContents.capturePage()).toPNG())
+        const libraryCheck = await mainWindow.webContents.executeJavaScript(`(() => {
+          const list=document.querySelectorAll('[data-library-action]');
+          const search=document.getElementById('actionSearch');search.value='三球抛接';search.dispatchEvent(new Event('input'));
+          const filtered=[...document.querySelectorAll('[data-library-action]')].map(x=>x.textContent);
+          search.value='';search.dispatchEvent(new Event('input'));
+          return {count:list.length,filtered};
+        })()`)
+        const expectedLibraryCount = actionCatalog.filter(action=>action.status==='completed').length
+        if(expectedLibraryCount<1 || libraryCheck.count!==expectedLibraryCount || libraryCheck.filtered.length!==1) throw new Error('Library search failed: '+JSON.stringify(libraryCheck))
+        await mainWindow.webContents.executeJavaScript("document.querySelector('[data-library-action]').click()")
+        await new Promise(resolve=>setTimeout(resolve,1000))
+        const libraryPlaying=await mainWindow.webContents.executeJavaScript("({visible:document.getElementById('petVideo').classList.contains('is-visible'),width:document.getElementById('petVideo').videoWidth,rate:document.getElementById('petVideo').playbackRate})")
+        if(!libraryPlaying.visible || libraryPlaying.width!==2560 || libraryPlaying.rate!==1) throw new Error('Library preview failed: '+JSON.stringify(libraryPlaying))
+        mainWindow.webContents.send('whale:pet-state', {state:'codex-running'})
+        await mainWindow.webContents.executeJavaScript(`(() => {
+          const toggle=document.getElementById('dynamicPet');toggle.checked=false;toggle.dispatchEvent(new Event('change'));
+          document.querySelector('[data-library-action]').click();
+        })()`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const disabledAction = await mainWindow.webContents.executeJavaScript(`({
+          videoVisible:document.getElementById('petVideo').classList.contains('is-visible'),
+          videoPaused:document.getElementById('petVideo').paused,
+          poster:document.querySelector('.pet-image.is-visible')?.getAttribute('src')
+        })`)
+        if (disabledAction.videoVisible || !disabledAction.videoPaused || !disabledAction.poster?.includes('/action-library/')) throw new Error('Disabled library action animated: '+JSON.stringify(disabledAction))
+        await mainWindow.webContents.executeJavaScript(`(() => {const toggle=document.getElementById('dynamicPet');toggle.checked=true;toggle.dispatchEvent(new Event('change'))})()`)
+        mainWindow.webContents.send('whale:pet-state', {state:'codex-running'})
+        if(process.argv.includes('--token-speed-smoke-test')) await require('./token-speed-audit.cjs').run(mainWindow, artifactDir)
+        if(process.argv.includes('--interaction-smoke-test')) await require('./interaction-audit.cjs').run(mainWindow, artifactDir)
+        if(process.argv.includes('--performance-smoke-test')) await require('./runtime-audit.cjs').run(mainWindow, artifactDir)
 
         quitting = true
         app.quit()
@@ -515,15 +585,21 @@ async function createWindow() {
   if (codexSmokeMode) {
     mainWindow.webContents.once('did-finish-load', async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 250))
-        mainWindow.webContents.send('whale:codex-activity', { phase: 'searching', threadId: 'smoke-thread', title: 'Smoke', activeCount: 1 })
+        // Deliberately publish before renderer initialization; ready handshake must replay it.
+        sendCodexActivity({ phase: 'searching', threadId: 'smoke-thread', title: 'Smoke', activeCount: 1 })
+        await mainWindow.webContents.executeJavaScript(`new Promise((resolve,reject)=>{
+          const deadline=Date.now()+15000;const timer=setInterval(()=>{
+            if(document.documentElement.dataset.ready==='true'){clearInterval(timer);resolve()}
+            else if(Date.now()>deadline){clearInterval(timer);reject(new Error('Renderer startup timed out'))}
+          },50)
+        })`)
         await new Promise((resolve) => setTimeout(resolve, 180))
         const liveActivity = await mainWindow.webContents.executeJavaScript(`({
           status: document.getElementById('codexLiveStatus').textContent,
           frame: document.querySelector('.pet-image.is-visible')?.getAttribute('src'),
         })`)
-        if (!liveActivity.status.includes('查找') || !liveActivity.frame.includes('assets/dsh-pet/working_command/')) throw new Error(`Codex activity animation failed: ${JSON.stringify(liveActivity)}`)
-        mainWindow.webContents.send('whale:codex-activity', { phase: 'idle', threadId: null, title: null, activeCount: 0 })
+        if (!liveActivity.status.includes('查找') || !liveActivity.frame.includes('assets/dsh-pet-4x60/working_command/')) throw new Error(`Codex activity animation failed: ${JSON.stringify(liveActivity)}`)
+        sendCodexActivity({ phase: 'idle', threadId: null, title: null, activeCount: 0 })
         const wheel = await mainWindow.webContents.executeJavaScript(`(() => {
           document.getElementById('petStage').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
           const menu = document.getElementById('actionWheel')
@@ -595,12 +671,13 @@ async function createWindow() {
         const animation = await mainWindow.webContents.executeJavaScript(`(async () => {
           document.querySelector('#actionWheel [data-idle="hover"]').click()
           await new Promise((resolve) => setTimeout(resolve, 150))
-          const first = document.querySelector('.pet-image.is-visible').getAttribute('src')
+          const first = document.querySelector('#statusVideo.is-visible')?.currentTime ?? document.querySelector('img.pet-image.is-visible').getAttribute('src')
           await new Promise((resolve) => setTimeout(resolve, 300))
-          const second = document.querySelector('.pet-image.is-visible').getAttribute('src')
-          return { first, second, enabled: document.getElementById('dynamicPet').checked }
+          const second = document.querySelector('#statusVideo.is-visible')?.currentTime ?? document.querySelector('img.pet-image.is-visible').getAttribute('src')
+          const source = document.querySelector('#statusVideo.is-visible')?.getAttribute('src') || String(second)
+          return { first, second, source, enabled: document.getElementById('dynamicPet').checked }
         })()`)
-        if (!animation.enabled || animation.first === animation.second || !animation.second.includes('assets/dsh-pet/idle/')) throw new Error(`Dynamic pet failed: ${JSON.stringify(animation)}`)
+        if (!animation.enabled || animation.first === animation.second || !(animation.source.includes('assets/dsh-pet-4x60/idle/') || animation.source.endsWith('/idle.webm'))) throw new Error(`Dynamic pet failed: ${JSON.stringify(animation)}`)
         await fs.writeFile(path.join(artifactDir, 'dynamic-pet.png'), (await mainWindow.webContents.capturePage()).toPNG())
         console.log(`[codex-smoke] ${state.remaining}, lifetime ${state.lifetime}`)
         quitting = true
@@ -707,6 +784,11 @@ function registerIpc() {
     const threads = await getCodexThreads()
     if (!threads.some((thread) => thread.id === threadId)) throw new Error('找不到这条 Codex 对话')
     await shell.openExternal(`codex://threads/${encodeURIComponent(threadId)}`)
+  })
+  handle('whale:renderer-ready', () => {
+    applyWindowSize()
+    if (latestCodexActivity) sendCodexActivity(latestCodexActivity)
+    else if (!smokeMode && !codexSmokeMode && !animationSmokeMode) void publishCodexActivity()
   })
   handle('whale:get-config', () => publicConfig())
   handle('whale:refresh-balance', () => refreshBalance())

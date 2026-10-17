@@ -119,3 +119,26 @@ These clips are upstream 640x360 / 24 FPS assets, not part of the 2,600-frame
 super-resolution batch and not yet interpolated to 60 FPS.
 
 Source: https://github.com/PC2005-cloud/dsh-pet/tree/631c5310b047931404978152fdc7865413c153ec/dsh-pet/assets/webm
+
+## Imported 4x / 60 FPS assets (2026-09-27)
+
+The user supplied an enhanced Windows application archive containing
+`assets/dsh-pet-4x60/` and `assets/action-library/`. These are derivative
+processed versions of the animation sources attributed above. The 106
+original author descriptions have been restored from the pinned upstream
+handoff to `assets/action-library/author-descriptions/`. Source and output
+hashes are retained in the action catalog. Existing attribution and licenses
+continue to apply. The supplied installer did not include generation scripts,
+model hashes or the GPU processing report; no new model provenance is inferred.
+
+## Token throughput methodology references
+
+The local throughput estimator was independently implemented after reviewing
+MIT-licensed d-ridelman/token-pulse and petergpt/codex-speed-monitor:
+https://github.com/d-ridelman/token-pulse
+https://github.com/petergpt/codex-speed-monitor
+
+These projects informed the distinction between completed-response estimates,
+first assistant-item timing, cumulative usage deltas, and exact decoding speed.
+No third-party source code was copied. This app uses existing read-only local
+session monitoring; it does not install their collectors or modify Codex telemetry.

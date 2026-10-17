@@ -13,6 +13,8 @@ button { cursor: pointer; }
 .pet-image { position: absolute; z-index:1; right: 0; bottom: 0; width: 282px; height: 282px; object-fit: contain; opacity:0; transform-origin: 50% 88%; pointer-events: none; transition:opacity .24s ease; }
 .pet-image.is-visible { opacity:1; }
 .pet-image.dynamic-pet { right:-23px; bottom:-3px; width:338px; height:292px; object-fit:contain; }
+.pet-image.status-video { z-index:2; transition:none; }
+.pet-stage.has-status-video > img.pet-image { visibility:hidden; }
 .pet-image.state-idle { animation:none; }
 .pet-image.state-idle.idle-float { animation:pet-idle-float 4.2s ease-in-out infinite; }
 .pet-image.state-working { animation: pet-working .72s ease-in-out infinite alternate; }
@@ -155,7 +157,23 @@ button { cursor: pointer; }
 
 .pet-image.extra-video, .pet-image.extra-poster { z-index:2; width:520px; height:292px; right:-114px; bottom:-18px; object-fit:contain; }
 .action-wheel button:nth-child(7) { left:0; bottom:12px; width:90px; }
-.extra-action-menu { position:absolute; z-index:9; right:12px; bottom:58px; width:260px; padding:12px; border-radius:18px; border:1px solid #8b9dc0; background:rgba(24,38,73,.96); color:#edf4ff; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.extra-action-menu { position:absolute; z-index:9; right:12px; bottom:58px; width:min(320px,calc(100vw - 24px)); max-height:min(430px,calc(100vh - 76px)); overflow:auto; padding:12px; border-radius:18px; border:1px solid #8b9dc0; background:rgba(24,38,73,.96); color:#edf4ff; display:block; }
 .extra-action-menu header { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:center; font-weight:700; }
 .extra-action-menu button { padding:8px; border-radius:12px; border:1px solid #8095ba; background:#31466a; color:#f6eddb; font-size:13px; }
 .extra-action-menu header button { padding:2px 8px; }
+.extra-action-featured { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+.action-library-filters { display:grid; grid-template-columns:1fr 110px; gap:6px; margin:10px 0 6px; }
+.action-library-filters input,.action-library-filters select { min-width:0; padding:7px; border:1px solid #8095ba; border-radius:9px; color:#eef4ff; background:#1d2c49; }
+.action-library-list { display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:210px; overflow:auto; }
+.action-library-list button { text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.action-library-empty { grid-column:1/-1; padding:10px; color:#b8c5df; text-align:center; }
+
+/* Keep throughput readable without changing the quota badge width. */
+.usage-badge .usage-speed { margin-top:4px; padding-top:4px; border-top:1px solid currentColor; font-size:10px; font-weight:500; line-height:1.45; }
+.usage-speed b { font-size:12px; font-weight:700; }
+.token-speed-grid { margin-top:10px; }
+.token-speed-grid small { display:block; opacity:.7; font-size:10px; }
+.token-speed-grid strong { font-size:24px; }
+.token-speed-details { line-height:1.5; }
+
+.usage-speed::before { content:'最近响应 · 估算'; display:block; font-size:8px; opacity:.65; line-height:1.3; }
