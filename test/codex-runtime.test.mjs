@@ -60,10 +60,12 @@ test('running processes discover relocated desktop bundles and CLI paths on all 
 test('process-discovered CLI is selected when standard paths are unavailable', async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), 'whale discovery '))
   try {
-    const executable = path.join(temp, 'codex')
+    // A real temp file must use the host's path/executable conventions.
+    // Pure candidate tests above cover foreign platform paths independently.
+    const executable = path.join(temp, process.platform === 'win32' ? 'codex.exe' : 'codex')
     await writeFile(executable, 'fixture')
     await chmod(executable, 0o755)
-    const runtime = await resolveCodex({ platform: 'linux', env: { PATH: '' }, home: temp, processes: [{ command: executable }] })
+    const runtime = await resolveCodex({ env: { PATH: '' }, home: temp, processes: [{ command: executable }] })
     assert.equal(runtime.command, await import('node:fs/promises').then(fs => fs.realpath(executable)))
   } finally { await rm(temp, { recursive: true, force: true }) }
 })
